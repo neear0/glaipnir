@@ -5,10 +5,9 @@
 #include <string_view>
 #include <vector>
 
-namespace glaipnir::platform::windows::detail {
+namespace glaipnir::platform::windows::detail
+{
+	std::vector<std::wstring> split_list(std::wstring_view text, wchar_t separator);
 
-std::vector<std::wstring> split_list(std::wstring_view text, wchar_t separator);
-
-bool is_existing_file(const std::filesystem::path& path);
-
+	bool is_existing_file(const std::filesystem::path& path);
 }

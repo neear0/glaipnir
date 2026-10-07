@@ -2,8 +2,7 @@
 
 #include <string_view>
 
-namespace glaipnir {
-
-inline constexpr std::string_view version_string = "0.1.0";
-
+namespace glaipnir
+{
+	inline constexpr std::string_view version_string = "0.1.0";
 }

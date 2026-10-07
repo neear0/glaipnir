@@ -4,42 +4,44 @@
 #include <string>
 #include <vector>
 
-namespace glaipnir::test {
+namespace glaipnir::test
+{
+	struct test_case_t
+	{
+		const char* name;
+		void (*body)();
+	};
 
-struct test_case_t {
-    const char* name;
-    void (*body)();
-};
+	std::vector<test_case_t>& registry();
 
-std::vector<test_case_t>& registry();
+	struct registrar_t
+	{
+		registrar_t(const char* name, void (*body)()) { registry().push_back({name, body}); }
+	};
 
-struct registrar_t {
-    registrar_t(const char* name, void (*body)()) { registry().push_back({name, body}); }
-};
+	int& current_failure_count();
 
-int& current_failure_count();
+	void report_failure(const char* file, int line, const std::string& expression);
 
-void report_failure(const char* file, int line, const std::string& expression);
+	void note(const std::string& message);
 
-void note(const std::string& message);
+	class c_temp_dir
+	{
+	public:
+		c_temp_dir();
+		~c_temp_dir();
+		c_temp_dir(const c_temp_dir&) = delete;
+		c_temp_dir& operator=(const c_temp_dir&) = delete;
 
-class c_temp_dir {
-public:
-    c_temp_dir();
-    ~c_temp_dir();
-    c_temp_dir(const c_temp_dir&) = delete;
-    c_temp_dir& operator=(const c_temp_dir&) = delete;
+		const std::filesystem::path& path() const noexcept { return path_; }
 
-    const std::filesystem::path& path() const noexcept { return path_; }
+	private:
+		std::filesystem::path path_;
+	};
 
-private:
-    std::filesystem::path path_;
-};
+	std::string read_file(const std::filesystem::path& path);
 
-std::string read_file(const std::filesystem::path& path);
-
-void write_file(const std::filesystem::path& path, const std::string& content);
-
+	void write_file(const std::filesystem::path& path, const std::string& content);
 }
 
 #define glaipnir_test(name)                                                                                            \

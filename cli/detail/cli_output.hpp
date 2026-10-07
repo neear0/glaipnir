@@ -5,9 +5,9 @@
 
 #include "glaipnir/core/error.hpp"
 
-namespace glaipnir::cli::detail {
-
-inline constexpr std::string_view usage_text = R"(glaipnir - deny-by-default sandbox for AI agents
+namespace glaipnir::cli::detail
+{
+	inline constexpr std::string_view usage_text = R"(glaipnir - deny-by-default sandbox for AI agents
 
 usage:
   glaipnir run [--policy FILE] [--session ID] [--cwd DIR] -- COMMAND [ARGS...]
@@ -29,12 +29,11 @@ no inherited environment, no child processes. Without --session the run uses a t
 session that is deleted afterwards.
 )";
 
-void print_error(const core::error_t& error);
+	void print_error(const core::error_t& error);
 
-int fail(const core::error_t& error);
+	int fail(const core::error_t& error);
 
-int usage_error(std::string_view message);
+	int usage_error(std::string_view message);
 
-std::string random_suffix();
-
+	std::string random_suffix();
 }
