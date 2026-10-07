@@ -58,7 +58,8 @@ glaipnir_test(toml_subset_rejects_ambiguous_input)
 
 glaipnir_test(policy_defaults_deny_everything)
 {
-	const auto& data = c_policy::deny_all().data();
+	const auto policy = c_policy::deny_all();
+	const auto& data = policy.data();
 	glaipnir_check(data.paths.empty());
 	glaipnir_check(data.network == glaipnir::policy::network_mode::none);
 	glaipnir_check(data.env.pass.empty() && data.env.set.empty());

@@ -6,6 +6,10 @@ SANITIZE ?= 0
 CXXFLAGS ?= -std=c++20 -O1 -g -Wall -Wextra -Wpedantic -Werror
 CPPFLAGS := -Iinclude -Isrc -Itests
 
+ifeq ($(findstring clang,$(shell $(CXX) --version 2>/dev/null | head -n1)),)
+CXXFLAGS += -Wno-maybe-uninitialized
+endif
+
 ifeq ($(SANITIZE),1)
 SANITIZER_FLAGS := -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all
 endif
