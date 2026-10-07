@@ -1,0 +1,31 @@
+# A coding agent whose tools do not work inside an AppContainer (for example git, or scripts that
+# write to NUL). Read docs/backends.md first: this backend always has internet access and can read
+# files that every user on the PC may read, which usually includes other drives such as D:\.
+#
+#   cd C:/code/my-project
+#   glaipnir run --policy policies/restricted_coding_agent.toml --session my-project -- git status
+
+[sandbox]
+name = "restricted-coding-agent"
+backend = "restricted_token"
+exposed_folders = "refuse"
+
+[filesystem]
+write = ["${cwd}"]
+
+[network]
+mode = "unrestricted"
+
+[env]
+pass = ["PATH", "LANG"]
+
+[env.set]
+GIT_TERMINAL_PROMPT = "0"
+
+[limits]
+memory_mb = 4096
+max_processes = 64
+wall_timeout_s = 7200
+
+[capabilities]
+child_processes = true

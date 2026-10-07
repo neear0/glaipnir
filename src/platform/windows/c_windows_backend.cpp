@@ -2,7 +2,13 @@
 
 #include "platform/windows/detail/backend_support.hpp"
 #include "platform/windows/detail/c_attribute_list.hpp"
+#include "platform/windows/detail/c_sid.hpp"
+#include "platform/windows/detail/exposure_report.hpp"
+#include "platform/windows/detail/exposure_scan.hpp"
 #include "platform/windows/detail/grant_ledger.hpp"
+#include "platform/windows/detail/grant_plan.hpp"
+#include "platform/windows/detail/mandatory_label.hpp"
+#include "platform/windows/detail/restricted_token.hpp"
 #include "platform/windows/detail/sandbox_environment.hpp"
 #include "platform/windows/detail/win_util.hpp"
 
@@ -22,12 +28,16 @@ using glaipnir::core::error_code;
 using glaipnir::core::make_error;
 using glaipnir::core::result_t;
 
-glaipnir::platform::windows::c_windows_backend::c_windows_backend(policy::policy_t policy, std::string session_id,
-                                                                  c_app_container container,
+glaipnir::platform::windows::c_windows_backend::c_windows_backend(policy::policy_t policy,
+                                                                  policy::isolation_backend mode,
+                                                                  std::string session_id, std::string session_key,
+                                                                  c_app_container container, std::string sandbox_sid,
                                                                   std::filesystem::path workspace,
                                                                   std::filesystem::path container_folder)
-	: policy_(std::move(policy)), session_id_(std::move(session_id)), container_(std::move(container)),
-	  workspace_(std::move(workspace)), container_folder_(std::move(container_folder))
+	: policy_(std::move(policy)), mode_(mode), session_id_(std::move(session_id)), session_key_(std::move(session_key)),
+	  container_(std::move(container)),
+	  sandbox_sid_(std::move(sandbox_sid)), workspace_(std::move(workspace)),
+	  container_folder_(std::move(container_folder))
 {
 }
 
@@ -38,12 +48,11 @@ glaipnir::platform::windows::c_windows_backend::prepare(const policy::c_policy& 
                                                         core::c_audit_log& audit)
 {
 	const auto& data = policy.data();
-	using policy::access_mode;
 	using policy::isolation_backend;
 	if (data.backend == isolation_backend::windows_sandbox)
 	{
 		return make_error(error_code::not_supported,
-		                  "the windows_sandbox backend is not implemented yet; use app_container");
+		                  "the windows_sandbox backend is not implemented yet; use app_container or restricted_token");
 	}
 	if (data.backend == isolation_backend::process || data.backend == isolation_backend::firecracker)
 	{
@@ -55,8 +64,21 @@ glaipnir::platform::windows::c_windows_backend::prepare(const policy::c_policy& 
 		return make_error(error_code::not_supported,
 		                  "network.mode = \"proxy\" is not available on Windows yet; use \"none\" or \"unrestricted\"");
 	}
+	const bool restricted = data.backend == isolation_backend::restricted_token;
+	if (restricted && data.network == policy::network_mode::none)
+	{
+		return make_error(error_code::not_supported,
+		                  "the restricted_token backend cannot block network access without administrator rights; "
+		                  "set network.mode = \"unrestricted\" or use backend = \"app_container\"");
+	}
+	if (restricted && data.less_privileged)
+	{
+		return make_error(error_code::invalid_policy, "sandbox.less_privileged only applies to the app_container backend");
+	}
+	const auto mode = restricted ? isolation_backend::restricted_token : isolation_backend::app_container;
+	const auto key = detail::session_key(session_id, session_dir);
 
-	auto container = c_app_container::create_or_open(detail::container_moniker(session_id));
+	auto container = c_app_container::create_or_open(detail::container_moniker(key));
 	if (!container)
 	{
 		return std::move(container).error();
@@ -77,66 +99,183 @@ glaipnir::platform::windows::c_windows_backend::prepare(const policy::c_policy& 
 		}
 	}
 
-	std::vector<detail::ledger_entry_t> desired{{workspace, access_mode::read_write}};
-	for (const auto& rule : data.paths)
+	auto sandbox_sid = restricted
+		                   ? result_t<detail::c_sid>{detail::c_sid::for_session(key)}
+		                   : detail::c_sid::copy_of(container->sid());
+	if (!sandbox_sid)
 	{
-		desired.push_back({rule.path, rule.access});
+		return std::move(sandbox_sid).error();
 	}
+	std::vector<detail::c_sid> baseline;
+	if (restricted)
+	{
+		for (const auto text : detail::restricted_baseline_sids)
+		{
+			auto sid = detail::c_sid::from_string(text);
+			if (!sid)
+			{
+				return std::move(sid).error();
+			}
+			baseline.push_back(std::move(*sid));
+		}
+	}
+	else
+	{
+		auto sid = detail::c_sid::from_string(data.less_privileged ? "S-1-15-2-2" : "S-1-15-2-1");
+		if (!sid)
+		{
+			return std::move(sid).error();
+		}
+		baseline.push_back(std::move(*sid));
+	}
+	std::vector<void*> baseline_groups;
+	for (const auto& sid : baseline)
+	{
+		baseline_groups.push_back(sid.get());
+	}
+
+	detail::grant_plan_input_t plan_input;
+	plan_input.sid = sandbox_sid->to_string();
+	plan_input.workspace = workspace;
+	plan_input.container_folder = *folder;
+	plan_input.rules = data.paths;
+	plan_input.restricted = restricted;
+	std::vector<std::string> notices;
+	if (restricted)
+	{
+		notices.push_back(detail::restricted_token_limits());
+	}
+	if (restricted && !policy.host().home.empty())
+	{
+		for (const auto& path : detail::find_exposed_directories(policy.host().home, detail::exposure_scan_depth,
+		                                                         baseline_groups))
+		{
+			const bool granted_on_purpose = std::any_of(data.paths.begin(), data.paths.end(), [&](const auto& rule)
+			{
+				return core::is_same_or_inside(path, rule.path);
+			});
+			if (!granted_on_purpose)
+			{
+				plan_input.exposed.push_back(path);
+			}
+		}
+	}
+	if (!plan_input.exposed.empty())
+	{
+		std::string listed;
+		for (const auto& path : plan_input.exposed)
+		{
+			listed += (listed.empty() ? "" : ", ") + core::to_display_string(path);
+		}
+		(void)audit.record("exposure." + std::string{policy::to_string(data.exposed_folders)}, listed);
+		switch (data.exposed_folders)
+		{
+		case policy::exposure_handling::refuse:
+			return make_error(error_code::invalid_policy, detail::exposure_refusal(plan_input.exposed));
+		case policy::exposure_handling::warn:
+			notices.push_back(detail::exposure_warning(plan_input.exposed));
+			plan_input.exposed.clear();
+			break;
+		case policy::exposure_handling::deny:
+			notices.push_back(detail::exposure_denial(plan_input.exposed));
+			break;
+		}
+	}
+	const auto desired = detail::plan_grants(plan_input);
 
 	const auto ledger = session_dir / detail::ledger_file_name;
-	auto recorded = detail::read_ledger(ledger);
+	const auto recorded = detail::read_ledger(ledger, container->sid_string());
 	for (const auto& old : recorded)
 	{
-		const bool still_wanted = std::any_of(desired.begin(), desired.end(),
-		                                      [&](const auto& want) { return detail::same_path(want.path, old.path); });
+		const bool still_wanted = std::any_of(desired.begin(), desired.end(), [&](const auto& want)
+		{
+			return detail::same_entry(want, old);
+		});
 		if (!still_wanted)
 		{
-			auto revoked = revoke_path_access(old.path, container->sid());
-			if (!revoked)
+			auto reverted = detail::revert_entry(old);
+			if (!reverted)
 			{
-				return std::move(revoked).error();
+				return std::move(reverted).error();
 			}
-			(void)audit.record("grant.revoke", core::to_display_string(old.path));
+			(void)audit.record("grant.revoke", std::format("{} {}", detail::to_string(old.kind),
+			                                               core::to_display_string(old.path)));
 		}
 	}
-
-	auto union_entries = desired;
-	for (const auto& old : recorded)
-	{
-		if (std::none_of(union_entries.begin(), union_entries.end(),
-		                 [&](const auto& e) { return detail::same_path(e.path, old.path); }))
-		{
-			union_entries.push_back(old);
-		}
-	}
-	auto written = detail::write_ledger(ledger, union_entries);
+	auto written = detail::write_ledger(ledger, desired);
 	if (!written)
 	{
 		return std::move(written).error();
 	}
 
+	std::vector<detail::ledger_entry_t> kept;
 	for (const auto& want : desired)
 	{
-		auto outcome = grant_path_access(want.path, container->sid(), want.access, data.less_privileged);
-		if (!outcome)
+		const bool was_recorded = std::any_of(recorded.begin(), recorded.end(), [&](const auto& old)
 		{
-			(void)audit.record("grant.denied", core::to_display_string(want.path) + ": " + outcome.error().message);
-			return std::move(outcome).error();
+			return detail::same_entry(want, old);
+		});
+		std::string outcome_text;
+		bool keep = true;
+		if (want.kind == detail::ledger_kind::low_label)
+		{
+			auto changed = detail::apply_low_label(want.path);
+			if (!changed)
+			{
+				(void)audit.record("grant.denied", core::to_display_string(want.path) + ": " + changed.error().message);
+				return std::move(changed).error();
+			}
+			keep = *changed || was_recorded;
+			outcome_text = *changed ? "granted" : "unchanged";
 		}
-		(void)audit.record("grant.path", std::format("{} {} ({})", want.access == access_mode::read_write ? "rw" : "ro",
-		                                             core::to_display_string(want.path),
-		                                             detail::outcome_name(*outcome)));
+		else
+		{
+			grant_kind kind = grant_kind::read_only;
+			switch (want.kind)
+			{
+			case detail::ledger_kind::read_write: kind = grant_kind::read_write;
+				break;
+			case detail::ledger_kind::traverse: kind = grant_kind::traverse;
+				break;
+			case detail::ledger_kind::deny: kind = grant_kind::deny;
+				break;
+			default: kind = grant_kind::read_only;
+				break;
+			}
+			auto outcome = grant_path_access(want.path, sandbox_sid->get(), kind, baseline_groups);
+			if (!outcome && kind == grant_kind::traverse)
+			{
+				outcome = grant_outcome::skipped;
+			}
+			if (!outcome)
+			{
+				(void)audit.record("grant.denied", core::to_display_string(want.path) + ": " + outcome.error().message);
+				return std::move(outcome).error();
+			}
+			keep = *outcome == grant_outcome::granted || *outcome == grant_outcome::unchanged;
+			outcome_text = detail::outcome_name(*outcome);
+		}
+		if (keep)
+		{
+			kept.push_back(want);
+		}
+		(void)audit.record("grant.path", std::format("{} {} ({})", detail::to_string(want.kind),
+		                                             core::to_display_string(want.path), outcome_text));
 	}
-	written = detail::write_ledger(ledger, desired);
+	written = detail::write_ledger(ledger, kept);
 	if (!written)
 	{
 		return std::move(written).error();
 	}
 
-	(void)audit.record("sandbox.prepare", std::format("backend=app_container sid={} lpac={} network={}",
-	                                                  container->sid_string(), data.less_privileged,
-	                                                  policy::to_string(data.network)));
-	return c_windows_backend{data, std::string{session_id}, std::move(*container), workspace, std::move(*folder)};
+	(void)audit.record("sandbox.prepare", std::format("backend={} sid={} lpac={} network={} exposed={}",
+	                                                  policy::to_string(mode), plan_input.sid, data.less_privileged,
+	                                                  policy::to_string(data.network), plan_input.exposed.size()));
+	c_windows_backend backend{
+		data, mode, std::string{session_id}, key, std::move(*container), plan_input.sid, workspace, std::move(*folder)
+	};
+	backend.notices_ = std::move(notices);
+	return backend;
 }
 
 result_t<std::wstring>
@@ -193,6 +332,7 @@ result_t<void> glaipnir::platform::windows::c_windows_backend::start(const isola
 	{
 		return make_error(error_code::invalid_argument, "no command given");
 	}
+	const bool restricted = mode_ == policy::isolation_backend::restricted_token;
 
 	std::wstring search_path = detail::host_variable(L"PATH");
 	for (const auto& [name, value] : spec.environment)
@@ -233,7 +373,23 @@ result_t<void> glaipnir::platform::windows::c_windows_backend::start(const isola
 		return std::move(environment).error();
 	}
 
-	auto job = c_job_object::create(session_id_, policy_.limits, policy_.capabilities);
+	c_unique_handle token;
+	if (restricted)
+	{
+		auto sid = detail::c_sid::from_string(sandbox_sid_);
+		if (!sid)
+		{
+			return std::move(sid).error();
+		}
+		auto created = detail::create_restricted_token(sid->get());
+		if (!created)
+		{
+			return std::move(created).error();
+		}
+		token = std::move(*created);
+	}
+
+	auto job = c_job_object::create(session_key_, policy_.limits, policy_.capabilities);
 	if (!job)
 	{
 		return std::move(job).error();
@@ -241,7 +397,7 @@ result_t<void> glaipnir::platform::windows::c_windows_backend::start(const isola
 
 	std::vector<detail::well_known_sid_t> capability_sids;
 	std::vector<SID_AND_ATTRIBUTES> capabilities;
-	if (policy_.network == policy::network_mode::unrestricted)
+	if (!restricted && policy_.network == policy::network_mode::unrestricted)
 	{
 		detail::well_known_sid_t sid;
 		DWORD size = static_cast<DWORD>(sid.bytes.size());
@@ -283,32 +439,40 @@ result_t<void> glaipnir::platform::windows::c_windows_backend::start(const isola
 	DWORD child_policy = PROCESS_CREATION_CHILD_PROCESS_RESTRICTED;
 	DWORD packages_policy = PROCESS_CREATION_ALL_APPLICATION_PACKAGES_OPT_OUT;
 
-	const DWORD attribute_count = 3 + (inherited.empty() ? 0 : 1) + (policy_.capabilities.child_processes ? 0 : 1) +
-		(policy_.less_privileged ? 1 : 0);
+	const bool use_handle_list = !inherited.empty();
+	const bool block_children = !policy_.capabilities.child_processes;
+	const bool use_lpac = !restricted && policy_.less_privileged;
+	const DWORD attribute_count = 2 + (restricted ? 0 : 1) + (use_handle_list ? 1 : 0) + (block_children ? 1 : 0) +
+		(use_lpac ? 1 : 0);
 	auto attributes = detail::c_attribute_list::create(attribute_count);
 	if (!attributes)
 	{
 		return std::move(attributes).error();
 	}
-	std::array<result_t<void>, 6> updates{
-		attributes->set(PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES, &security, sizeof(security),
-		                "security capabilities"),
-		attributes->set(PROC_THREAD_ATTRIBUTE_JOB_LIST, &job_handle, sizeof(job_handle), "job list"),
-		attributes->set(PROC_THREAD_ATTRIBUTE_MITIGATION_POLICY, &mitigations, sizeof(mitigations),
-		                "mitigation policy"),
-		inherited.empty()
-			? core::ok()
-			: attributes->set(PROC_THREAD_ATTRIBUTE_HANDLE_LIST, inherited.data(),
-			                  inherited.size() * sizeof(HANDLE), "handle list"),
-		policy_.capabilities.child_processes
-			? core::ok()
-			: attributes->set(PROC_THREAD_ATTRIBUTE_CHILD_PROCESS_POLICY, &child_policy, sizeof(child_policy),
-			                  "child process policy"),
-		!policy_.less_privileged
-			? core::ok()
-			: attributes->set(PROC_THREAD_ATTRIBUTE_ALL_APPLICATION_PACKAGES_POLICY, &packages_policy,
-			                  sizeof(packages_policy), "LPAC policy"),
-	};
+	std::vector<result_t<void>> updates;
+	updates.push_back(attributes->set(PROC_THREAD_ATTRIBUTE_JOB_LIST, &job_handle, sizeof(job_handle), "job list"));
+	updates.push_back(attributes->set(PROC_THREAD_ATTRIBUTE_MITIGATION_POLICY, &mitigations, sizeof(mitigations),
+	                                  "mitigation policy"));
+	if (!restricted)
+	{
+		updates.push_back(attributes->set(PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES, &security, sizeof(security),
+		                                  "security capabilities"));
+	}
+	if (use_handle_list)
+	{
+		updates.push_back(attributes->set(PROC_THREAD_ATTRIBUTE_HANDLE_LIST, inherited.data(),
+		                                  inherited.size() * sizeof(HANDLE), "handle list"));
+	}
+	if (block_children)
+	{
+		updates.push_back(attributes->set(PROC_THREAD_ATTRIBUTE_CHILD_PROCESS_POLICY, &child_policy,
+		                                  sizeof(child_policy), "child process policy"));
+	}
+	if (use_lpac)
+	{
+		updates.push_back(attributes->set(PROC_THREAD_ATTRIBUTE_ALL_APPLICATION_PACKAGES_POLICY, &packages_policy,
+		                                  sizeof(packages_policy), "LPAC policy"));
+	}
 	for (auto& update : updates)
 	{
 		if (!update)
@@ -320,7 +484,7 @@ result_t<void> glaipnir::platform::windows::c_windows_backend::start(const isola
 	STARTUPINFOEXW startup{};
 	startup.StartupInfo.cb = sizeof(startup);
 	startup.lpAttributeList = attributes->get();
-	if (!inherited.empty())
+	if (use_handle_list)
 	{
 		startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
 		startup.StartupInfo.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
@@ -330,10 +494,17 @@ result_t<void> glaipnir::platform::windows::c_windows_backend::start(const isola
 
 	const std::filesystem::path working_directory =
 		spec.working_directory.empty() ? workspace_ : spec.working_directory;
+	const DWORD creation_flags = EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT;
 	PROCESS_INFORMATION info{};
-	if (!CreateProcessW(executable->c_str(), command_line->data(), nullptr, nullptr, inherited.empty() ? FALSE : TRUE,
-	                    EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT, environment->data(),
-	                    working_directory.c_str(), &startup.StartupInfo, &info))
+	const BOOL created = restricted
+		                     ? CreateProcessAsUserW(token.get(), executable->c_str(), command_line->data(), nullptr,
+		                                            nullptr, use_handle_list ? TRUE : FALSE, creation_flags,
+		                                            environment->data(), working_directory.c_str(),
+		                                            &startup.StartupInfo, &info)
+		                     : CreateProcessW(executable->c_str(), command_line->data(), nullptr, nullptr,
+		                                      use_handle_list ? TRUE : FALSE, creation_flags, environment->data(),
+		                                      working_directory.c_str(), &startup.StartupInfo, &info);
+	if (!created)
 	{
 		const DWORD code = GetLastError();
 		std::string hint;
@@ -448,36 +619,37 @@ result_t<void> glaipnir::platform::windows::c_windows_backend::terminate() const
 result_t<void> glaipnir::platform::windows::c_windows_backend::cleanup(std::string_view session_id,
                                                                        const std::filesystem::path& session_dir)
 {
+	const auto moniker = detail::container_moniker(detail::session_key(session_id, session_dir));
 	const auto ledger = session_dir / detail::ledger_file_name;
-	const auto entries = detail::read_ledger(ledger);
-	if (!entries.empty())
+	std::error_code ec;
+	if (std::filesystem::exists(ledger, ec))
 	{
-		auto container = c_app_container::create_or_open(detail::container_moniker(session_id));
+		auto container = c_app_container::create_or_open(moniker);
 		if (!container)
 		{
 			return std::move(container).error();
 		}
-		for (const auto& entry : entries)
+		for (const auto& entry : detail::read_ledger(ledger, container->sid_string()))
 		{
 			if (core::is_same_or_inside(entry.path, session_dir))
 			{
 				continue;
 			}
-			auto revoked = revoke_path_access(entry.path, container->sid());
-			if (!revoked)
+			auto reverted = detail::revert_entry(entry);
+			if (!reverted)
 			{
-				return revoked;
+				return reverted;
 			}
 		}
 	}
-	std::error_code ec;
 	std::filesystem::remove(ledger, ec);
-	return c_app_container::remove(detail::container_moniker(session_id));
+	return c_app_container::remove(moniker);
 }
 
-result_t<void> glaipnir::platform::windows::c_windows_backend::pause_running(std::string_view session_id)
+result_t<void> glaipnir::platform::windows::c_windows_backend::pause_running(std::string_view session_id,
+	const std::filesystem::path& session_dir)
 {
-	auto job = c_job_object::open(session_id);
+	auto job = c_job_object::open(detail::session_key(session_id, session_dir));
 	if (!job)
 	{
 		return std::move(job).error();
@@ -485,9 +657,10 @@ result_t<void> glaipnir::platform::windows::c_windows_backend::pause_running(std
 	return job->suspend();
 }
 
-result_t<void> glaipnir::platform::windows::c_windows_backend::resume_running(std::string_view session_id)
+result_t<void> glaipnir::platform::windows::c_windows_backend::resume_running(std::string_view session_id,
+	const std::filesystem::path& session_dir)
 {
-	auto job = c_job_object::open(session_id);
+	auto job = c_job_object::open(detail::session_key(session_id, session_dir));
 	if (!job)
 	{
 		return std::move(job).error();
@@ -495,9 +668,10 @@ result_t<void> glaipnir::platform::windows::c_windows_backend::resume_running(st
 	return job->resume();
 }
 
-result_t<void> glaipnir::platform::windows::c_windows_backend::terminate_running(std::string_view session_id)
+result_t<void> glaipnir::platform::windows::c_windows_backend::terminate_running(std::string_view session_id,
+	const std::filesystem::path& session_dir)
 {
-	auto job = c_job_object::open(session_id);
+	auto job = c_job_object::open(detail::session_key(session_id, session_dir));
 	if (!job)
 	{
 		return std::move(job).error();

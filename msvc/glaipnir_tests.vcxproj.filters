@@ -36,6 +36,9 @@
     <ClCompile Include="..\tests\persistence\test_persistence.cpp">
       <Filter>tests\persistence</Filter>
     </ClCompile>
+    <ClCompile Include="..\tests\platform\windows\test_restricted_token.cpp">
+      <Filter>tests\platform\windows</Filter>
+    </ClCompile>
     <ClCompile Include="..\tests\platform\windows\test_windows_sandbox.cpp">
       <Filter>tests\platform\windows</Filter>
     </ClCompile>

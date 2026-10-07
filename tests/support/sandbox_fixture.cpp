@@ -2,6 +2,8 @@
 
 #include "support/sandbox_fixture.hpp"
 
+#include <cstdio>
+
 #include "glaipnir/core/c_sandbox.hpp"
 
 glaipnir::test::sandbox_fixture_t::sandbox_fixture_t() : host(policy::host_context_t::detect(temp.path() / "state"))
@@ -66,6 +68,35 @@ glaipnir::test::sandbox_fixture_t::run(const std::string& id, const std::string&
 std::string glaipnir::test::path_text(const std::filesystem::path& path)
 {
 	return path.string();
+}
+
+std::filesystem::path glaipnir::test::sandbox_fixture_t::use_fake_home()
+{
+	host.home = temp.path() / "home";
+	std::filesystem::create_directories(host.home);
+	return host.home;
+}
+
+std::string glaipnir::test::command_output(const std::string& command)
+{
+	std::string output;
+	FILE* pipe = _popen(command.c_str(), "r");
+	if (pipe == nullptr)
+	{
+		return output;
+	}
+	char buffer[512];
+	while (std::fgets(buffer, sizeof(buffer), pipe) != nullptr)
+	{
+		output += buffer;
+	}
+	_pclose(pipe);
+	return output;
+}
+
+std::string glaipnir::test::restricted_policy(const std::string& extra)
+{
+	return "[sandbox]\nbackend = \"restricted_token\"\n[network]\nmode = \"unrestricted\"\n" + extra;
 }
 
 #endif

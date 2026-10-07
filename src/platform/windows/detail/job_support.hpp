@@ -15,7 +15,7 @@ namespace glaipnir::platform::windows::detail
 {
 	inline constexpr std::uint64_t ticks_per_second = 10'000'000;
 
-	std::wstring job_name(std::string_view session_id);
+	std::wstring job_name(std::string_view session_key);
 
 	std::chrono::milliseconds ticks_to_ms(LONGLONG ticks);
 

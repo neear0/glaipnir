@@ -30,6 +30,8 @@ namespace glaipnir::core
 
 		const policy::c_policy& policy() const noexcept { return policy_; }
 
+		const std::vector<std::string>& notices() const noexcept { return backend_.notices(); }
+
 	private:
 		c_sandbox(policy::c_policy policy, c_session& session, platform::platform_backend backend);
 

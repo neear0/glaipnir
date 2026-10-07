@@ -25,6 +25,8 @@ namespace glaipnir::test
 		sandbox_fixture_t(const sandbox_fixture_t&) = delete;
 		sandbox_fixture_t& operator=(const sandbox_fixture_t&) = delete;
 
+		std::filesystem::path use_fake_home();
+
 		std::filesystem::path state_root() const;
 		core::result_t<policy::c_policy> policy_from(const std::string& text) const;
 		core::result_t<core::c_session> session(const std::string& id) const;
@@ -35,6 +37,10 @@ namespace glaipnir::test
 	};
 
 	std::string path_text(const std::filesystem::path& path);
+
+	std::string command_output(const std::string& command);
+
+	std::string restricted_policy(const std::string& extra = {});
 }
 
 #endif

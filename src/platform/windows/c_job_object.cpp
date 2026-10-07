@@ -9,10 +9,10 @@ using glaipnir::core::error_code;
 using glaipnir::core::result_t;
 
 result_t<glaipnir::platform::windows::c_job_object>
-glaipnir::platform::windows::c_job_object::create(std::string_view session_id, const policy::resource_limit_t& limits,
+glaipnir::platform::windows::c_job_object::create(std::string_view session_key, const policy::resource_limit_t& limits,
                                                   const policy::capability_t& capabilities)
 {
-	c_unique_handle job{CreateJobObjectW(nullptr, detail::job_name(session_id).c_str())};
+	c_unique_handle job{CreateJobObjectW(nullptr, detail::job_name(session_key).c_str())};
 	if (!job.valid())
 	{
 		return detail::last_error("cannot create job object");
@@ -20,7 +20,7 @@ glaipnir::platform::windows::c_job_object::create(std::string_view session_id, c
 	if (GetLastError() == ERROR_ALREADY_EXISTS)
 	{
 		return core::make_error(error_code::busy,
-		                        "session '" + std::string{session_id} + "' already has a running sandbox");
+		                        "session '" + std::string{session_key} + "' already has a running sandbox");
 	}
 
 	JOBOBJECT_EXTENDED_LIMIT_INFORMATION extended{};
@@ -82,18 +82,18 @@ glaipnir::platform::windows::c_job_object::create(std::string_view session_id, c
 }
 
 result_t<glaipnir::platform::windows::c_job_object>
-glaipnir::platform::windows::c_job_object::open(std::string_view session_id)
+glaipnir::platform::windows::c_job_object::open(std::string_view session_key)
 {
 	c_unique_handle job{
-		OpenJobObjectW(JOB_OBJECT_QUERY | JOB_OBJECT_TERMINATE, FALSE, detail::job_name(session_id).c_str())
+		OpenJobObjectW(JOB_OBJECT_QUERY | JOB_OBJECT_TERMINATE, FALSE, detail::job_name(session_key).c_str())
 	};
 	if (!job.valid())
 	{
 		if (GetLastError() == ERROR_FILE_NOT_FOUND)
 		{
-			return core::make_error(error_code::not_found, "session '" + std::string{session_id} + "' is not running");
+			return core::make_error(error_code::not_found, "session '" + std::string{session_key} + "' is not running");
 		}
-		return detail::last_error("cannot open job of session '" + std::string{session_id} + "'");
+		return detail::last_error("cannot open job of session '" + std::string{session_key} + "'");
 	}
 	return c_job_object{std::move(job)};
 }

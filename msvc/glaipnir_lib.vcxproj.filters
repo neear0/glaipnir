@@ -231,10 +231,28 @@
     <ClInclude Include="..\src\platform\windows\detail\c_attribute_list.hpp">
       <Filter>src\platform\windows\detail</Filter>
     </ClInclude>
+    <ClCompile Include="..\src\platform\windows\detail\c_sid.cpp">
+      <Filter>src\platform\windows\detail</Filter>
+    </ClCompile>
+    <ClInclude Include="..\src\platform\windows\detail\c_sid.hpp">
+      <Filter>src\platform\windows\detail</Filter>
+    </ClInclude>
     <ClCompile Include="..\src\platform\windows\detail\dacl.cpp">
       <Filter>src\platform\windows\detail</Filter>
     </ClCompile>
     <ClInclude Include="..\src\platform\windows\detail\dacl.hpp">
+      <Filter>src\platform\windows\detail</Filter>
+    </ClInclude>
+    <ClCompile Include="..\src\platform\windows\detail\exposure_report.cpp">
+      <Filter>src\platform\windows\detail</Filter>
+    </ClCompile>
+    <ClInclude Include="..\src\platform\windows\detail\exposure_report.hpp">
+      <Filter>src\platform\windows\detail</Filter>
+    </ClInclude>
+    <ClCompile Include="..\src\platform\windows\detail\exposure_scan.cpp">
+      <Filter>src\platform\windows\detail</Filter>
+    </ClCompile>
+    <ClInclude Include="..\src\platform\windows\detail\exposure_scan.hpp">
       <Filter>src\platform\windows\detail</Filter>
     </ClInclude>
     <ClCompile Include="..\src\platform\windows\detail\grant_ledger.cpp">
@@ -243,16 +261,34 @@
     <ClInclude Include="..\src\platform\windows\detail\grant_ledger.hpp">
       <Filter>src\platform\windows\detail</Filter>
     </ClInclude>
+    <ClCompile Include="..\src\platform\windows\detail\grant_plan.cpp">
+      <Filter>src\platform\windows\detail</Filter>
+    </ClCompile>
+    <ClInclude Include="..\src\platform\windows\detail\grant_plan.hpp">
+      <Filter>src\platform\windows\detail</Filter>
+    </ClInclude>
     <ClCompile Include="..\src\platform\windows\detail\job_support.cpp">
       <Filter>src\platform\windows\detail</Filter>
     </ClCompile>
     <ClInclude Include="..\src\platform\windows\detail\job_support.hpp">
       <Filter>src\platform\windows\detail</Filter>
     </ClInclude>
+    <ClCompile Include="..\src\platform\windows\detail\mandatory_label.cpp">
+      <Filter>src\platform\windows\detail</Filter>
+    </ClCompile>
+    <ClInclude Include="..\src\platform\windows\detail\mandatory_label.hpp">
+      <Filter>src\platform\windows\detail</Filter>
+    </ClInclude>
     <ClCompile Include="..\src\platform\windows\detail\path_search.cpp">
       <Filter>src\platform\windows\detail</Filter>
     </ClCompile>
     <ClInclude Include="..\src\platform\windows\detail\path_search.hpp">
+      <Filter>src\platform\windows\detail</Filter>
+    </ClInclude>
+    <ClCompile Include="..\src\platform\windows\detail\restricted_token.cpp">
+      <Filter>src\platform\windows\detail</Filter>
+    </ClCompile>
+    <ClInclude Include="..\src\platform\windows\detail\restricted_token.hpp">
       <Filter>src\platform\windows\detail</Filter>
     </ClInclude>
     <ClCompile Include="..\src\platform\windows\detail\sandbox_environment.cpp">

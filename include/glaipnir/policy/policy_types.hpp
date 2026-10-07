@@ -14,9 +14,17 @@ namespace glaipnir::policy
 	{
 		automatic,
 		app_container,
+		restricted_token,
 		windows_sandbox,
 		process,
 		firecracker,
+	};
+
+	enum class exposure_handling
+	{
+		refuse,
+		warn,
+		deny,
 	};
 
 	enum class network_mode
@@ -66,6 +74,7 @@ namespace glaipnir::policy
 		std::string name = "unnamed";
 		isolation_backend backend = isolation_backend::automatic;
 		bool less_privileged = false;
+		exposure_handling exposed_folders = exposure_handling::refuse;
 		std::vector<path_rule_t> paths;
 		network_mode network = network_mode::none;
 		std::vector<net_rule_t> net_rules;

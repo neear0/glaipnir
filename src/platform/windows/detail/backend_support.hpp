@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <string_view>
 
@@ -18,7 +19,9 @@ namespace glaipnir::platform::windows::detail
 		std::array<std::uint8_t, SECURITY_MAX_SID_SIZE> bytes{};
 	};
 
-	std::string container_moniker(std::string_view session_id);
+	std::string session_key(std::string_view session_id, const std::filesystem::path& session_dir);
+
+	std::string container_moniker(std::string_view session_key);
 
 	std::string_view outcome_name(grant_outcome outcome);
 }

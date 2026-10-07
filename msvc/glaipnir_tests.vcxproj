@@ -39,6 +39,7 @@
     <ClCompile Include="..\tests\conventions\test_conventions.cpp" />
     <ClCompile Include="..\tests\core\test_core.cpp" />
     <ClCompile Include="..\tests\persistence\test_persistence.cpp" />
+    <ClCompile Include="..\tests\platform\windows\test_restricted_token.cpp" />
     <ClCompile Include="..\tests\platform\windows\test_windows_sandbox.cpp" />
     <ClCompile Include="..\tests\policy\test_policy.cpp" />
     <ClCompile Include="..\tests\support\fake_host.cpp" />

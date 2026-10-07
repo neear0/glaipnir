@@ -151,6 +151,10 @@ int glaipnir::cli::c_cli::command_run()
 		}
 		else
 		{
+			for (const auto& notice : sandbox->notices())
+			{
+				std::cerr << "glaipnir: note: " << notice << "\n";
+			}
 			detail::ignore_interrupts(true);
 			auto result = sandbox->run(command, working_directory);
 			detail::ignore_interrupts(false);
@@ -248,15 +252,15 @@ int glaipnir::cli::c_cli::command_session()
 	}
 	else if (action == "pause")
 	{
-		outcome = platform::pause_session(id);
+		outcome = platform::pause_session(id, core::c_session::directory_for(state_root_, id));
 	}
 	else if (action == "resume")
 	{
-		outcome = platform::resume_session(id);
+		outcome = platform::resume_session(id, core::c_session::directory_for(state_root_, id));
 	}
 	else if (action == "kill")
 	{
-		outcome = platform::terminate_session(id);
+		outcome = platform::terminate_session(id, core::c_session::directory_for(state_root_, id));
 	}
 	else
 	{

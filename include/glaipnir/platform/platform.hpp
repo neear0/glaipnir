@@ -41,7 +41,7 @@ namespace glaipnir::platform
 
 	core::result_t<void> cleanup_session(std::string_view session_id, const std::filesystem::path& session_dir);
 
-	core::result_t<void> pause_session(std::string_view session_id);
-	core::result_t<void> resume_session(std::string_view session_id);
-	core::result_t<void> terminate_session(std::string_view session_id);
+	core::result_t<void> pause_session(std::string_view session_id, const std::filesystem::path& session_dir);
+	core::result_t<void> resume_session(std::string_view session_id, const std::filesystem::path& session_dir);
+	core::result_t<void> terminate_session(std::string_view session_id, const std::filesystem::path& session_dir);
 }

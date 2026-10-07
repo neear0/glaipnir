@@ -1,9 +1,9 @@
 #pragma once
 
 #include <filesystem>
+#include <span>
 
 #include "glaipnir/core/error.hpp"
-#include "glaipnir/policy/policy_types.hpp"
 
 namespace glaipnir::platform::windows
 {
@@ -12,11 +12,21 @@ namespace glaipnir::platform::windows
 		unchanged,
 		granted,
 		already_allowed,
+		skipped,
 	};
 
-	core::result_t<grant_outcome> grant_path_access(const std::filesystem::path& path, void* sid,
-	                                                policy::access_mode access,
-	                                                bool less_privileged);
+	enum class grant_kind
+	{
+		read_only,
+		read_write,
+		traverse,
+		deny,
+	};
+
+	core::result_t<grant_outcome> grant_path_access(const std::filesystem::path& path, void* sid, grant_kind kind,
+	                                                std::span<void* const> baseline_groups);
 
 	core::result_t<void> revoke_path_access(const std::filesystem::path& path, void* sid);
+
+	core::result_t<bool> is_exposed_to(const std::filesystem::path& path, std::span<void* const> groups);
 }

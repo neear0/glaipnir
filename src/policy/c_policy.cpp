@@ -87,6 +87,7 @@ std::string_view glaipnir::policy::to_string(isolation_backend backend) noexcept
 	{
 	case isolation_backend::automatic: return "auto";
 	case isolation_backend::app_container: return "app_container";
+	case isolation_backend::restricted_token: return "restricted_token";
 	case isolation_backend::windows_sandbox: return "windows_sandbox";
 	case isolation_backend::process: return "process";
 	case isolation_backend::firecracker: return "firecracker";
@@ -110,9 +111,20 @@ std::string_view glaipnir::policy::to_string(access_mode mode) noexcept
 	return mode == access_mode::read_write ? "read_write" : "read_only";
 }
 
+std::string_view glaipnir::policy::to_string(exposure_handling handling) noexcept
+{
+	switch (handling)
+	{
+	case exposure_handling::refuse: return "refuse";
+	case exposure_handling::warn: return "warn";
+	case exposure_handling::deny: return "deny";
+	}
+	return "unknown";
+}
+
 glaipnir::policy::c_policy glaipnir::policy::c_policy::deny_all()
 {
-	return c_policy{policy_t{}};
+	return c_policy{policy_t{}, host_context_t{}};
 }
 
 result_t<glaipnir::policy::c_policy> glaipnir::policy::c_policy::load_file(const std::filesystem::path& file,
@@ -160,6 +172,7 @@ result_t<glaipnir::policy::c_policy> glaipnir::policy::c_policy::parse(std::stri
 	auto backend = detail::parse_enum(backend_text,
 	                                  std::array{
 		                                  isolation_backend::automatic, isolation_backend::app_container,
+		                                  isolation_backend::restricted_token,
 		                                  isolation_backend::windows_sandbox, isolation_backend::process,
 		                                  isolation_backend::firecracker
 	                                  },
@@ -170,6 +183,19 @@ result_t<glaipnir::policy::c_policy> glaipnir::policy::c_policy::parse(std::stri
 	}
 	data.backend = *backend;
 	glaipnir_read(keys.read("sandbox.less_privileged", data.less_privileged, "a boolean"));
+	std::string exposure_text{to_string(data.exposed_folders)};
+	glaipnir_read(keys.read("sandbox.exposed_folders", exposure_text, "a string"));
+	auto exposure = detail::parse_enum(exposure_text,
+	                                   std::array{
+		                                   exposure_handling::refuse, exposure_handling::warn,
+		                                   exposure_handling::deny
+	                                   },
+	                                   "exposed_folders setting");
+	if (!exposure)
+	{
+		return std::move(exposure).error();
+	}
+	data.exposed_folders = *exposure;
 
 	std::vector<std::string> read_paths;
 	std::vector<std::string> write_paths;
@@ -262,6 +288,10 @@ result_t<glaipnir::policy::c_policy> glaipnir::policy::c_policy::parse(std::stri
 
 result_t<glaipnir::policy::c_policy> glaipnir::policy::c_policy::from_data(policy_t data, const host_context_t& host)
 {
+	if (data.exposed_folders != exposure_handling::refuse && data.backend != isolation_backend::restricted_token)
+	{
+		return detail::policy_error("sandbox.exposed_folders only applies to backend = \"restricted_token\"");
+	}
 	if (data.name.empty() || data.name.size() > 128)
 	{
 		return detail::policy_error("sandbox.name must be 1-128 characters");
@@ -335,7 +365,7 @@ result_t<glaipnir::policy::c_policy> glaipnir::policy::c_policy::from_data(polic
 			return detail::policy_error("environment variable '" + name + "' contains a NUL byte");
 		}
 	}
-	return c_policy{std::move(data)};
+	return c_policy{std::move(data), host};
 }
 
 std::string glaipnir::policy::c_policy::to_toml() const
@@ -346,6 +376,7 @@ std::string glaipnir::policy::c_policy::to_toml() const
 	out += "name = " + quote_toml_string(data_.name) + "\n";
 	out += std::format("backend = \"{}\"\n", to_string(data_.backend));
 	out += std::format("less_privileged = {}\n", data_.less_privileged);
+	out += std::format("exposed_folders = \"{}\"\n", to_string(data_.exposed_folders));
 
 	out += "\n[filesystem]\n";
 	for (const auto mode : {access_mode::read_only, access_mode::read_write})

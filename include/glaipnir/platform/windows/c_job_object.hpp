@@ -22,10 +22,10 @@ namespace glaipnir::platform::windows
 	class c_job_object
 	{
 	public:
-		static core::result_t<c_job_object> create(std::string_view session_id, const policy::resource_limit_t& limits,
+		static core::result_t<c_job_object> create(std::string_view session_key, const policy::resource_limit_t& limits,
 		                                           const policy::capability_t& capabilities);
 
-		static core::result_t<c_job_object> open(std::string_view session_id);
+		static core::result_t<c_job_object> open(std::string_view session_key);
 
 		void* handle() const noexcept { return handle_.get(); }
 

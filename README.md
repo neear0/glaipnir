@@ -23,9 +23,9 @@ backends are designed for but not written yet.
 | Area | Windows | Linux | macOS |
 |---|---|---|---|
 | Policy language, validation, audit log | done | done (portable code) | done (portable code) |
-| Process isolation | **AppContainer + Job Object** | Landlock + seccomp + namespaces: planned | Seatbelt: planned |
+| Process isolation | **AppContainer** or **restricted token**, both in a Job Object ([which one?](docs/backends.md)) | Landlock + seccomp + namespaces: planned | Seatbelt: planned |
 | Filesystem allow-list | **per-session DACL grants** | Landlock: planned | Seatbelt: planned |
-| Network `none` / `unrestricted` | **done** | planned | planned |
+| Network `none` / `unrestricted` | **done** (`none` needs `app_container`) | planned | planned |
 | Network `proxy` (domain allow-list + credential injection) | planned | planned | planned |
 | Resource limits (memory, CPU, pids, wall/CPU timeouts) | **done** | cgroup v2: planned | planned |
 | Workspace snapshots / rollback / fork | **done** | done (portable code, untested) | done (portable code, untested) |
@@ -131,7 +131,8 @@ directory, drive roots, and environment variables whose names look like secrets 
   log (`glaipnir audit verify`). The chain detects edits, deletions and reordering; it cannot stop
   someone with write access to the log from truncating its tail.
 
-Platform-specific details and known limitations are in [docs/windows.md](docs/windows.md).
+Platform-specific details and known limitations are in [docs/windows.md](docs/windows.md); a plain-language
+guide to choosing a Windows backend is in [docs/backends.md](docs/backends.md).
 
 ## Code layout
 
@@ -159,8 +160,8 @@ Coding rules (enforced by `tests/conventions/test_conventions.cpp`):
 
 1. Network proxy with domain allow-list and credential injection (needs an AppContainer loopback
    exemption or WFP rules on Windows).
-2. Restricted-token Windows backend for tools that break under AppContainer (see docs/windows.md).
-3. Linux backend: Landlock, seccomp, namespaces, cgroup v2; CI on GitHub Actions.
+2. Windows polish: interactive terminal agents, long paths, LAN-blocking test.
+3. Linux backend: Landlock, seccomp, namespaces, cgroup v2.
 4. Windows Sandbox (`.wsb`) backend; CRIU and Firecracker checkpoints; macOS Seatbelt.
 
 ## License

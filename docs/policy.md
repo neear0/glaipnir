@@ -16,8 +16,9 @@ The digest is recorded in the audit log for every run.
 | key | type | default | meaning |
 |---|---|---|---|
 | `name` | string | `"unnamed"` | label used in audit records |
-| `backend` | string | `"auto"` | `auto`, `app_container`, `windows_sandbox`, `process`, `firecracker`; unimplemented backends are refused |
-| `less_privileged` | bool | `false` | Windows LPAC: also drop the read access every AppContainer has to `C:/Program Files` and similar. Stricter, but most installed tools then need explicit `read` entries, and Program Files cannot be granted as a normal user |
+| `backend` | string | `"auto"` | `auto` (= `app_container` on Windows), `app_container`, `restricted_token`, `windows_sandbox`, `process`, `firecracker`; unimplemented backends are refused. See [backends.md](backends.md) for how to choose |
+| `less_privileged` | bool | `false` | `app_container` only. Windows LPAC: also drop the read access every AppContainer has to `C:/Program Files` and similar. Stricter, but most installed tools then need explicit `read` entries, and Program Files cannot be granted as a normal user |
+| `exposed_folders` | string | `"refuse"` | `restricted_token` only. What to do when a folder in your profile is readable by all users: `refuse` (do not run, explain), `warn` (run; the program can read it), `deny` (block it for this session, slow for big folders). Explained in [backends.md](backends.md#the-exposed_folders-setting) |
 
 ## `[filesystem]`
 

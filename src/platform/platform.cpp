@@ -105,19 +105,19 @@ result_t<void> glaipnir::platform::cleanup_session(std::string_view session_id,
 	return platform_backend::cleanup(session_id, session_dir);
 }
 
-result_t<void> glaipnir::platform::pause_session(std::string_view session_id)
+result_t<void> glaipnir::platform::pause_session(std::string_view session_id, const std::filesystem::path& session_dir)
 {
-	return platform_backend::pause_running(session_id);
+	return platform_backend::pause_running(session_id, session_dir);
 }
 
-result_t<void> glaipnir::platform::resume_session(std::string_view session_id)
+result_t<void> glaipnir::platform::resume_session(std::string_view session_id, const std::filesystem::path& session_dir)
 {
-	return platform_backend::resume_running(session_id);
+	return platform_backend::resume_running(session_id, session_dir);
 }
 
-result_t<void> glaipnir::platform::terminate_session(std::string_view session_id)
+result_t<void> glaipnir::platform::terminate_session(std::string_view session_id, const std::filesystem::path& session_dir)
 {
-	return platform_backend::terminate_running(session_id);
+	return platform_backend::terminate_running(session_id, session_dir);
 }
 
 #else
@@ -127,17 +127,17 @@ result_t<void> glaipnir::platform::cleanup_session(std::string_view, const std::
 	return core::ok();
 }
 
-result_t<void> glaipnir::platform::pause_session(std::string_view)
+result_t<void> glaipnir::platform::pause_session(std::string_view, const std::filesystem::path&)
 {
 	return core::make_error(error_code::not_supported, "pause is not implemented on this platform yet");
 }
 
-result_t<void> glaipnir::platform::resume_session(std::string_view)
+result_t<void> glaipnir::platform::resume_session(std::string_view, const std::filesystem::path&)
 {
 	return core::make_error(error_code::not_supported, "resume is not implemented on this platform yet");
 }
 
-result_t<void> glaipnir::platform::terminate_session(std::string_view)
+result_t<void> glaipnir::platform::terminate_session(std::string_view, const std::filesystem::path&)
 {
 	return core::make_error(error_code::not_supported, "terminate is not implemented on this platform yet");
 }

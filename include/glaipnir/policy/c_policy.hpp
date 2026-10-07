@@ -32,16 +32,19 @@ namespace glaipnir::policy
 
 		const policy_t& data() const noexcept { return data_; }
 
+		const host_context_t& host() const noexcept { return host_; }
+
 		std::string to_toml() const;
 
 		std::string digest() const;
 
 	private:
-		explicit c_policy(policy_t data) : data_(std::move(data))
+		c_policy(policy_t data, host_context_t host) : data_(std::move(data)), host_(std::move(host))
 		{
 		}
 
 		policy_t data_;
+		host_context_t host_;
 	};
 
 	bool looks_like_secret_name(std::string_view name);
@@ -51,4 +54,5 @@ namespace glaipnir::policy
 	std::string_view to_string(isolation_backend backend) noexcept;
 	std::string_view to_string(network_mode mode) noexcept;
 	std::string_view to_string(access_mode mode) noexcept;
+	std::string_view to_string(exposure_handling handling) noexcept;
 }

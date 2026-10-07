@@ -174,3 +174,17 @@ GREETING = "multi\nline"
 	glaipnir_check(reparsed->data().name == policy->data().name);
 	glaipnir_check(reparsed->digest() == policy->digest());
 }
+
+glaipnir_test(policy_exposed_folders_setting)
+{
+	fake_host_t fake;
+	auto policy = c_policy::parse("[sandbox]\nbackend = \"restricted_token\"\nexposed_folders = \"deny\"\n", fake.host);
+	glaipnir_require_ok(policy);
+	glaipnir_check(policy->data().exposed_folders == glaipnir::policy::exposure_handling::deny);
+	glaipnir_check(c_policy::deny_all().data().exposed_folders == glaipnir::policy::exposure_handling::refuse);
+	glaipnir_check(!policy_parses("[sandbox]\nexposed_folders = \"warn\"\n", fake.host));
+	glaipnir_check(!policy_parses("[sandbox]\nbackend = \"restricted_token\"\nexposed_folders = \"ignore\"\n", fake.host));
+	auto reparsed = c_policy::parse(policy->to_toml(), fake.host);
+	glaipnir_require_ok(reparsed);
+	glaipnir_check(reparsed->digest() == policy->digest());
+}
