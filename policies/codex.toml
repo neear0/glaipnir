@@ -1,0 +1,30 @@
+# OpenAI Codex CLI working on the current project.
+#
+# STATUS: needs network.mode = "proxy" (not implemented yet); see claude_code.toml for why the
+# API key is not passed through the environment.
+
+[sandbox]
+name = "codex"
+
+[filesystem]
+read = []
+write = ["${cwd}"]
+
+[network]
+mode = "proxy"
+allow = [
+  "api.openai.com",
+  "registry.npmjs.org",
+  "github.com",
+  "*.githubusercontent.com",
+]
+
+[env]
+pass = ["PATH", "LANG", "TERM"]
+
+[limits]
+memory_mb = 8192
+max_processes = 256
+
+[capabilities]
+child_processes = true

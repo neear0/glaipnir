@@ -1,0 +1,29 @@
+# The default when no --policy is given, spelled out.
+# The sandbox can use its own session workspace and nothing else: no host paths,
+# no network, no inherited environment, no subprocesses.
+
+[sandbox]
+name = "deny-all"
+
+[filesystem]
+read = []
+write = []
+
+[network]
+mode = "none"
+
+[env]
+pass = []
+
+[limits]
+memory_mb = 4096
+max_processes = 128
+cpu_percent = 100
+wall_timeout_s = 0
+cpu_timeout_s = 0
+
+[capabilities]
+child_processes = false
+clipboard_read = false
+clipboard_write = false
+desktop_ui = false

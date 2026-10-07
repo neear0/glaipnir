@@ -1,0 +1,8 @@
+* text=auto
+*.sln text eol=crlf
+*.vcxproj text eol=crlf
+*.props text eol=crlf
+*.cpp text eol=lf
+*.hpp text eol=lf
+*.md text eol=lf
+*.toml text eol=lf

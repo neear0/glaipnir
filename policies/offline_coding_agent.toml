@@ -1,0 +1,34 @@
+# An agent that edits the project you launch it from, with no network.
+#
+#   cd C:/code/my-project
+#   glaipnir run --policy policies/offline_coding_agent.toml --session my-project -- python agent.py
+#
+# Windows note: programs under C:/Windows and C:/Program Files are already readable by every
+# AppContainer. Tools installed per-user (e.g. %LOCALAPPDATA%/Programs/Python) must be listed
+# under `read`, e.g. "${home}/AppData/Local/Programs/Python/Python312".
+
+[sandbox]
+name = "offline-coding-agent"
+
+[filesystem]
+read = []
+write = ["${cwd}"]
+
+[network]
+mode = "none"
+
+[env]
+pass = ["PATH", "LANG"]
+
+[env.set]
+PYTHONDONTWRITEBYTECODE = "1"
+GIT_TERMINAL_PROMPT = "0"
+
+[limits]
+memory_mb = 4096
+max_processes = 64
+cpu_percent = 80
+wall_timeout_s = 7200
+
+[capabilities]
+child_processes = true

@@ -1,0 +1,16 @@
+# Private project notes; never publish.
+coms.md
+
+# Build output
+bin/
+obj/
+x64/
+
+# Visual Studio
+.vs/
+*.user
+*.aps
+*.ipch
+
+# Local scratch
+*.tmp
