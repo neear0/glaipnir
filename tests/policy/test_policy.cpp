@@ -157,3 +157,19 @@ glaipnir_test(policy_rejects_secrets_and_typos)
 	glaipnir_check(!glaipnir::policy::looks_like_secret_name("PATH"));
 	glaipnir_check(!glaipnir::policy::looks_like_secret_name("KEYBOARD_LAYOUT"));
 }
+
+glaipnir_test(policy_canonical_form_escapes_control_characters)
+{
+	fake_host_t fake;
+	auto policy = c_policy::parse(R"([sandbox]
+name = "line\nbreak\ttab\u0001ctl\"quote\\slash"
+[env.set]
+GREETING = "multi\nline"
+)", fake.host);
+	glaipnir_require_ok(policy);
+	glaipnir_check(policy->data().name == std::string{"line\nbreak\ttab\x01" "ctl\"quote\\slash"});
+	auto reparsed = c_policy::parse(policy->to_toml(), fake.host);
+	glaipnir_require_ok(reparsed);
+	glaipnir_check(reparsed->data().name == policy->data().name);
+	glaipnir_check(reparsed->digest() == policy->digest());
+}

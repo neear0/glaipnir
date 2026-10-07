@@ -1,5 +1,8 @@
 # glAIpnir
 
+[![ci](https://github.com/neear0/glaipnir/actions/workflows/ci.yml/badge.svg)](https://github.com/neear0/glaipnir/actions/workflows/ci.yml)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 A lightweight, deny-by-default sandbox for running AI agents, written in C++20.
 
 An agent launched through glaipnir never inherits your account's full reach. It gets a durable
@@ -43,6 +46,18 @@ bin\x64\Release\glaipnir_tests.exe
 
 The result is a single statically linked `bin\x64\Release\glaipnir.exe` (no VC++ redistributable).
 No third-party dependencies.
+
+On Linux the portable parts (policy, audit log, persistence) build and test with a plain Makefile;
+there is no Linux isolation backend or CLI yet.
+
+```
+make test                      # g++ by default; CXX=clang++ also works
+make test SANITIZE=1           # with AddressSanitizer + UBSan
+make fuzz FUZZ_CXX=clang++     # libFuzzer targets for the TOML and policy parsers
+```
+
+CI (GitHub Actions) runs the Windows build and tests in Debug and Release, the Linux tests under
+sanitizers with GCC and Clang, and a short fuzzing pass on every push.
 
 ## Usage
 
@@ -126,6 +141,7 @@ src/<area>/                   implementations; src/platform/windows is the Windo
 src/<area>/detail/            private helpers, namespace glaipnir::<area>::detail
 cli/  cli/detail/             the glaipnir command-line tool
 tests/<area>/                 tests per area; tests/support/ holds the harness and fixtures
+fuzz/                         libFuzzer targets
 policies/                     example policies
 msvc/                         Visual Studio projects (shared settings in glaipnir.props)
 ```
@@ -146,3 +162,7 @@ Coding rules (enforced by `tests/conventions/test_conventions.cpp`):
 2. Restricted-token Windows backend for tools that break under AppContainer (see docs/windows.md).
 3. Linux backend: Landlock, seccomp, namespaces, cgroup v2; CI on GitHub Actions.
 4. Windows Sandbox (`.wsb`) backend; CRIU and Firecracker checkpoints; macOS Seatbelt.
+
+## License
+
+Apache License 2.0, see [LICENSE](LICENSE).

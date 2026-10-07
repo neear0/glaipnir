@@ -16,7 +16,7 @@ glaipnir_test(conventions_names_and_layout_follow_project_rules)
 	const std::regex namespace_declaration{R"(\bnamespace\s+([A-Za-z_][\w:]*)\s*\{)"};
 	const std::regex namespace_keyword{R"(\bnamespace\b)"};
 	int files_checked = 0;
-	for (const auto* directory : {"include", "src", "cli", "tests"})
+	for (const auto* directory : {"include", "src", "cli", "tests", "fuzz"})
 	{
 		std::map<std::string, std::string> cpp_stems;
 		for (const auto& entry : std::filesystem::recursive_directory_iterator(

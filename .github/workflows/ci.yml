@@ -1,0 +1,73 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: windows (${{ matrix.configuration }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: build
+        run: msbuild glaipnir.sln -p:Configuration=${{ matrix.configuration }} -p:Platform=x64 -m -nologo -v:minimal
+      - name: test
+        run: bin\x64\${{ matrix.configuration }}\glaipnir_tests.exe
+      - name: upload glaipnir.exe
+        if: matrix.configuration == 'Release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: glaipnir-windows-x64
+          path: bin/x64/Release/glaipnir.exe
+
+  linux:
+    name: linux (${{ matrix.compiler }}, sanitizers)
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [g++-14, clang++-18]
+    steps:
+      - uses: actions/checkout@v4
+      - name: build and test
+        run: make -j"$(nproc)" test CXX=${{ matrix.compiler }} SANITIZE=1
+
+  fuzz:
+    name: fuzz (parsers)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: install libFuzzer runtime
+        run: sudo apt-get update && sudo apt-get install -y libclang-rt-18-dev
+      - name: build
+        run: make -j"$(nproc)" fuzz FUZZ_CXX=clang++-18
+      - name: fuzz
+        run: |
+          for target in build/linux/fuzz/*; do
+            name=$(basename "$target")
+            mkdir -p "corpus/$name"
+            cp policies/*.toml "corpus/$name/"
+            "$target" -max_total_time=60 -timeout=5 "corpus/$name"
+          done
+      - name: upload crash inputs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashes
+          path: |
+            crash-*
+            timeout-*
