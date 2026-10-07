@@ -1,11 +1,15 @@
 #include "glaipnir/platform/windows/c_windows_backend.hpp"
 
-#include "win_util.hpp"
+#include "platform/windows/detail/backend_support.hpp"
+#include "platform/windows/detail/c_attribute_list.hpp"
+#include "platform/windows/detail/grant_ledger.hpp"
+#include "platform/windows/detail/sandbox_environment.hpp"
+#include "platform/windows/detail/win_util.hpp"
 
 #include <algorithm>
 #include <array>
+#include <cwctype>
 #include <format>
-#include <fstream>
 #include <map>
 #include <system_error>
 #include <vector>
@@ -14,171 +18,23 @@
 #include "glaipnir/platform/windows/command_line.hpp"
 #include "glaipnir/platform/windows/path_acl.hpp"
 
-namespace glaipnir::platform::windows {
+using glaipnir::core::error_code;
+using glaipnir::core::make_error;
+using glaipnir::core::result_t;
 
-using core::error_code;
-using core::make_error;
-using core::result_t;
-using policy::access_mode;
-
-namespace fs = std::filesystem;
-
-namespace {
-
-constexpr std::string_view ledger_file_name = "grants.ledger";
-constexpr unsigned timeout_exit_code = 124; // same convention as coreutils timeout(1)
-constexpr unsigned terminated_exit_code = 137;
-
-std::string container_moniker(std::string_view session_id) {
-    return "glaipnir." + std::string{session_id};
-}
-
-// ---- grant ledger ---------------------------------------------------------------------------
-// Every DACL change is written down *before* it is made, so a crash between granting and
-// revoking still leaves enough information to undo it on the next run or on session delete.
-
-struct ledger_entry_t {
-    fs::path path;
-    access_mode access = access_mode::read_only;
-};
-
-std::vector<ledger_entry_t> read_ledger(const fs::path& file) {
-    std::vector<ledger_entry_t> entries;
-    std::ifstream input(file, std::ios::binary);
-    std::string line;
-    while (std::getline(input, line)) {
-        if (line.size() < 4 || line[2] != '\t') {
-            continue;
-        }
-        entries.push_back({core::from_utf8(std::string_view{line}.substr(3)),
-                           line.starts_with("rw") ? access_mode::read_write : access_mode::read_only});
-    }
-    return entries;
-}
-
-result_t<void> write_ledger(const fs::path& file, const std::vector<ledger_entry_t>& entries) {
-    const auto scratch = fs::path{file}.concat(".new");
-    {
-        std::ofstream output(scratch, std::ios::binary | std::ios::trunc);
-        for (const auto& entry : entries) {
-            const auto path_text = entry.path.u8string();
-            output << (entry.access == access_mode::read_write ? "rw" : "ro") << '\t'
-                   << std::string{path_text.begin(), path_text.end()} << '\n';
-        }
-        output.flush();
-        if (!output) {
-            return make_error(error_code::io_error, "cannot write grant ledger " + core::to_display_string(scratch));
-        }
-    }
-    std::error_code ec;
-    fs::rename(scratch, file, ec);
-    if (ec) {
-        return make_error(error_code::io_error, "cannot replace grant ledger: " + ec.message(), ec.value());
-    }
-    return core::ok();
-}
-
-bool same_path(const fs::path& a, const fs::path& b) {
-    return core::is_same_or_inside(a, b) && core::is_same_or_inside(b, a);
-}
-
-std::string_view outcome_name(grant_outcome outcome) {
-    switch (outcome) {
-    case grant_outcome::unchanged: return "unchanged";
-    case grant_outcome::granted: return "granted";
-    case grant_outcome::already_allowed: return "already_allowed";
-    }
-    return "unknown";
-}
-
-// ---- environment ----------------------------------------------------------------------------
-
-struct case_insensitive_less_t {
-    bool operator()(const std::wstring& a, const std::wstring& b) const noexcept {
-        return CompareStringOrdinal(a.c_str(), static_cast<int>(a.size()), b.c_str(), static_cast<int>(b.size()), TRUE) ==
-               CSTR_LESS_THAN;
-    }
-};
-
-std::wstring host_variable(const wchar_t* name) {
-    const DWORD size = GetEnvironmentVariableW(name, nullptr, 0);
-    if (size == 0) {
-        return {};
-    }
-    std::wstring value(size, L'\0');
-    const DWORD written = GetEnvironmentVariableW(name, value.data(), size);
-    value.resize(written);
-    return value;
-}
-
-// Non-secret variables that Windows itself and common runtimes break without
-// (e.g. Winsock and CryptoAPI need SystemRoot). Nothing user-specific is in this list.
-constexpr std::array<const wchar_t*, 18> essential_variables{
-    L"SystemRoot", L"windir", L"SystemDrive", L"ComSpec", L"PATHEXT", L"OS",
-    L"NUMBER_OF_PROCESSORS", L"PROCESSOR_ARCHITECTURE", L"PROCESSOR_IDENTIFIER", L"PROCESSOR_LEVEL",
-    L"PROCESSOR_REVISION", L"ProgramData", L"ProgramFiles", L"ProgramFiles(x86)", L"ProgramW6432",
-    L"CommonProgramFiles", L"CommonProgramFiles(x86)", L"CommonProgramW6432",
-};
-
-// ---- process attributes ---------------------------------------------------------------------
-
-class c_attribute_list {
-public:
-    static result_t<c_attribute_list> create(DWORD count) {
-        SIZE_T size = 0;
-        InitializeProcThreadAttributeList(nullptr, count, 0, &size);
-        c_attribute_list list;
-        list.storage_.resize(size);
-        auto* raw = list.get();
-        if (!InitializeProcThreadAttributeList(raw, count, 0, &size)) {
-            return last_error("cannot initialize process attributes");
-        }
-        list.initialized_ = true;
-        return list;
-    }
-
-    c_attribute_list(c_attribute_list&& other) noexcept
-        : storage_(std::move(other.storage_)), initialized_(std::exchange(other.initialized_, false)) {}
-    c_attribute_list& operator=(c_attribute_list&&) = delete;
-    ~c_attribute_list() {
-        if (initialized_) {
-            DeleteProcThreadAttributeList(get());
-        }
-    }
-
-    LPPROC_THREAD_ATTRIBUTE_LIST get() noexcept {
-        return reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(storage_.data());
-    }
-
-    result_t<void> set(DWORD_PTR attribute, void* value, SIZE_T size, std::string_view what) {
-        if (!UpdateProcThreadAttribute(get(), 0, attribute, value, size, nullptr, nullptr)) {
-            return last_error("cannot set process attribute " + std::string{what});
-        }
-        return core::ok();
-    }
-
-private:
-    c_attribute_list() = default;
-
-    std::vector<std::uint8_t> storage_;
-    bool initialized_ = false;
-};
-
-struct well_known_sid_t {
-    std::array<std::uint8_t, SECURITY_MAX_SID_SIZE> bytes{};
-};
-
-} // namespace
-
-c_windows_backend::c_windows_backend(policy::policy_t policy, std::string session_id, c_app_container container,
-                                     fs::path workspace, fs::path container_folder)
+glaipnir::platform::windows::c_windows_backend::c_windows_backend(policy::policy_t policy, std::string session_id,
+                                                                  c_app_container container,
+                                                                  std::filesystem::path workspace,
+                                                                  std::filesystem::path container_folder)
     : policy_(std::move(policy)), session_id_(std::move(session_id)), container_(std::move(container)),
       workspace_(std::move(workspace)), container_folder_(std::move(container_folder)) {}
 
-result_t<c_windows_backend> c_windows_backend::prepare(const policy::c_policy& policy, std::string_view session_id,
-                                                       const fs::path& session_dir, const fs::path& workspace,
-                                                       core::c_audit_log& audit) {
+result_t<glaipnir::platform::windows::c_windows_backend>
+glaipnir::platform::windows::c_windows_backend::prepare(const policy::c_policy& policy, std::string_view session_id,
+                                                        const std::filesystem::path& session_dir,
+                                                        const std::filesystem::path& workspace, core::c_audit_log& audit) {
     const auto& data = policy.data();
+    using policy::access_mode;
     using policy::isolation_backend;
     if (data.backend == isolation_backend::windows_sandbox) {
         return make_error(error_code::not_supported, "the windows_sandbox backend is not implemented yet; use app_container");
@@ -188,13 +44,11 @@ result_t<c_windows_backend> c_windows_backend::prepare(const policy::c_policy& p
                           "backend '" + std::string{policy::to_string(data.backend)} + "' is Linux-only");
     }
     if (data.network == policy::network_mode::proxy) {
-        // Refuse rather than silently degrade: a policy that asks for filtered egress must not
-        // get either no network (surprising) or open network (unsafe).
         return make_error(error_code::not_supported,
                           "network.mode = \"proxy\" is not available on Windows yet; use \"none\" or \"unrestricted\"");
     }
 
-    auto container = c_app_container::create_or_open(container_moniker(session_id));
+    auto container = c_app_container::create_or_open(detail::container_moniker(session_id));
     if (!container) {
         return std::move(container).error();
     }
@@ -204,22 +58,22 @@ result_t<c_windows_backend> c_windows_backend::prepare(const policy::c_policy& p
     }
     std::error_code ec;
     for (const auto* sub : {L"home/AppData/Roaming", L"home/AppData/Local", L"tmp"}) {
-        fs::create_directories(*folder / sub, ec);
+        std::filesystem::create_directories(*folder / sub, ec);
         if (ec) {
             return make_error(error_code::io_error, "cannot create sandbox profile directories: " + ec.message(), ec.value());
         }
     }
 
-    std::vector<ledger_entry_t> desired{{workspace, access_mode::read_write}};
+    std::vector<detail::ledger_entry_t> desired{{workspace, access_mode::read_write}};
     for (const auto& rule : data.paths) {
         desired.push_back({rule.path, rule.access});
     }
 
-    const auto ledger = session_dir / ledger_file_name;
-    auto recorded = read_ledger(ledger);
+    const auto ledger = session_dir / detail::ledger_file_name;
+    auto recorded = detail::read_ledger(ledger);
     for (const auto& old : recorded) {
-        const bool still_wanted =
-            std::any_of(desired.begin(), desired.end(), [&](const auto& want) { return same_path(want.path, old.path); });
+        const bool still_wanted = std::any_of(desired.begin(), desired.end(),
+                                              [&](const auto& want) { return detail::same_path(want.path, old.path); });
         if (!still_wanted) {
             auto revoked = revoke_path_access(old.path, container->sid());
             if (!revoked) {
@@ -231,11 +85,12 @@ result_t<c_windows_backend> c_windows_backend::prepare(const policy::c_policy& p
 
     auto union_entries = desired;
     for (const auto& old : recorded) {
-        if (std::none_of(union_entries.begin(), union_entries.end(), [&](const auto& e) { return same_path(e.path, old.path); })) {
+        if (std::none_of(union_entries.begin(), union_entries.end(),
+                         [&](const auto& e) { return detail::same_path(e.path, old.path); })) {
             union_entries.push_back(old);
         }
     }
-    auto written = write_ledger(ledger, union_entries);
+    auto written = detail::write_ledger(ledger, union_entries);
     if (!written) {
         return std::move(written).error();
     }
@@ -247,9 +102,9 @@ result_t<c_windows_backend> c_windows_backend::prepare(const policy::c_policy& p
             return std::move(outcome).error();
         }
         (void)audit.record("grant.path", std::format("{} {} ({})", want.access == access_mode::read_write ? "rw" : "ro",
-                                                     core::to_display_string(want.path), outcome_name(*outcome)));
+                                                     core::to_display_string(want.path), detail::outcome_name(*outcome)));
     }
-    written = write_ledger(ledger, desired);
+    written = detail::write_ledger(ledger, desired);
     if (!written) {
         return std::move(written).error();
     }
@@ -260,10 +115,11 @@ result_t<c_windows_backend> c_windows_backend::prepare(const policy::c_policy& p
     return c_windows_backend{data, std::string{session_id}, std::move(*container), workspace, std::move(*folder)};
 }
 
-result_t<std::wstring> c_windows_backend::build_environment(const isolation::launch_spec_t& spec) const {
-    std::map<std::wstring, std::wstring, case_insensitive_less_t> variables;
-    for (const auto* name : essential_variables) {
-        auto value = host_variable(name);
+result_t<std::wstring>
+glaipnir::platform::windows::c_windows_backend::build_environment(const isolation::launch_spec_t& spec) const {
+    std::map<std::wstring, std::wstring, detail::case_insensitive_less_t> variables;
+    for (const auto* name : detail::essential_variables) {
+        auto value = detail::host_variable(name);
         if (!value.empty()) {
             variables[name] = std::move(value);
         }
@@ -277,15 +133,15 @@ result_t<std::wstring> c_windows_backend::build_environment(const isolation::lau
     variables[L"TMP"] = (container_folder_ / "tmp").native();
 
     for (const auto& [name, value] : spec.environment) {
-        variables[to_wide(name)] = to_wide(value);
+        variables[detail::to_wide(name)] = detail::to_wide(value);
     }
-    variables[L"GLAIPNIR_SESSION"] = to_wide(session_id_);
+    variables[L"GLAIPNIR_SESSION"] = detail::to_wide(session_id_);
     variables[L"GLAIPNIR_WORKSPACE"] = workspace_.native();
 
     std::wstring block;
     for (const auto& [name, value] : variables) {
         if (value.find(L'\0') != std::wstring::npos) {
-            return make_error(error_code::invalid_argument, "environment value for " + from_wide(name) + " contains NUL");
+            return make_error(error_code::invalid_argument, "environment value for " + detail::from_wide(name) + " contains NUL");
         }
         block += name;
         block += L'=';
@@ -296,7 +152,7 @@ result_t<std::wstring> c_windows_backend::build_environment(const isolation::lau
     return block;
 }
 
-result_t<void> c_windows_backend::start(const isolation::launch_spec_t& spec) {
+result_t<void> glaipnir::platform::windows::c_windows_backend::start(const isolation::launch_spec_t& spec) {
     if (process_.valid()) {
         return make_error(error_code::busy, "sandbox already started");
     }
@@ -304,23 +160,19 @@ result_t<void> c_windows_backend::start(const isolation::launch_spec_t& spec) {
         return make_error(error_code::invalid_argument, "no command given");
     }
 
-    // Resolve with the PATH the sandbox will see when the policy passes one, else the host's:
-    // the command line was typed on the host, so host lookup is what the user expects.
-    std::wstring search_path = host_variable(L"PATH");
+    std::wstring search_path = detail::host_variable(L"PATH");
     for (const auto& [name, value] : spec.environment) {
-        if (CompareStringOrdinal(to_wide(name).c_str(), -1, L"PATH", -1, TRUE) == CSTR_EQUAL) {
-            search_path = to_wide(value);
+        if (CompareStringOrdinal(detail::to_wide(name).c_str(), -1, L"PATH", -1, TRUE) == CSTR_EQUAL) {
+            search_path = detail::to_wide(value);
         }
     }
-    auto executable = resolve_executable(to_wide(spec.argv.front()), search_path, host_variable(L"PATHEXT"));
+    auto executable = resolve_executable(detail::to_wide(spec.argv.front()), search_path, detail::host_variable(L"PATHEXT"));
     if (!executable) {
         return std::move(executable).error();
     }
     auto extension = executable->extension().native();
     std::transform(extension.begin(), extension.end(), extension.begin(), ::towlower);
     if (extension == L".bat" || extension == L".cmd") {
-        // cmd.exe re-parses batch arguments with its own rules, so CRT-style quoting cannot
-        // guarantee arguments arrive intact (the "BatBadBut" class of injection).
         return make_error(error_code::invalid_argument,
                           "refusing to launch batch file " + core::to_display_string(*executable) +
                               " directly; run it explicitly via `cmd /c` if you accept cmd's argument parsing");
@@ -328,7 +180,7 @@ result_t<void> c_windows_backend::start(const isolation::launch_spec_t& spec) {
 
     std::vector<std::wstring> wide_argv{executable->native()};
     for (std::size_t i = 1; i < spec.argv.size(); ++i) {
-        wide_argv.push_back(to_wide(spec.argv[i]));
+        wide_argv.push_back(detail::to_wide(spec.argv[i]));
     }
     auto command_line = build_command_line(wide_argv);
     if (!command_line) {
@@ -344,15 +196,13 @@ result_t<void> c_windows_backend::start(const isolation::launch_spec_t& spec) {
         return std::move(job).error();
     }
 
-    // Capabilities: only what the network policy implies. internetClient reaches the internet
-    // but not private/LAN ranges, which keeps cloud metadata and intranet services out of reach.
-    std::vector<well_known_sid_t> capability_sids;
+    std::vector<detail::well_known_sid_t> capability_sids;
     std::vector<SID_AND_ATTRIBUTES> capabilities;
     if (policy_.network == policy::network_mode::unrestricted) {
-        well_known_sid_t sid;
+        detail::well_known_sid_t sid;
         DWORD size = static_cast<DWORD>(sid.bytes.size());
         if (!CreateWellKnownSid(WinCapabilityInternetClientSid, nullptr, sid.bytes.data(), &size)) {
-            return last_error("cannot build internetClient capability");
+            return detail::last_error("cannot build internetClient capability");
         }
         capability_sids.push_back(sid);
     }
@@ -364,7 +214,6 @@ result_t<void> c_windows_backend::start(const isolation::launch_spec_t& spec) {
     security.Capabilities = capabilities.empty() ? nullptr : capabilities.data();
     security.CapabilityCount = static_cast<DWORD>(capabilities.size());
 
-    // Inherit only the three standard handles; anything else glaipnir has open stays out.
     std::vector<HANDLE> inherited;
     for (const DWORD which : {STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE}) {
         HANDLE handle = GetStdHandle(which);
@@ -387,14 +236,12 @@ result_t<void> c_windows_backend::start(const isolation::launch_spec_t& spec) {
 
     const DWORD attribute_count = 3 + (inherited.empty() ? 0 : 1) + (policy_.capabilities.child_processes ? 0 : 1) +
                                   (policy_.less_privileged ? 1 : 0);
-    auto attributes = c_attribute_list::create(attribute_count);
+    auto attributes = detail::c_attribute_list::create(attribute_count);
     if (!attributes) {
         return std::move(attributes).error();
     }
     std::array<result_t<void>, 6> updates{
         attributes->set(PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES, &security, sizeof(security), "security capabilities"),
-        // JOB_LIST places the process in the job before its first instruction runs; assigning
-        // afterwards would leave a window in which it could spawn an unconfined child.
         attributes->set(PROC_THREAD_ATTRIBUTE_JOB_LIST, &job_handle, sizeof(job_handle), "job list"),
         attributes->set(PROC_THREAD_ATTRIBUTE_MITIGATION_POLICY, &mitigations, sizeof(mitigations), "mitigation policy"),
         inherited.empty() ? core::ok()
@@ -423,7 +270,7 @@ result_t<void> c_windows_backend::start(const isolation::launch_spec_t& spec) {
         startup.StartupInfo.hStdError = GetStdHandle(STD_ERROR_HANDLE);
     }
 
-    const fs::path working_directory = spec.working_directory.empty() ? workspace_ : spec.working_directory;
+    const std::filesystem::path working_directory = spec.working_directory.empty() ? workspace_ : spec.working_directory;
     PROCESS_INFORMATION info{};
     if (!CreateProcessW(executable->c_str(), command_line->data(), nullptr, nullptr, inherited.empty() ? FALSE : TRUE,
                         EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT, environment->data(),
@@ -434,7 +281,7 @@ result_t<void> c_windows_backend::start(const isolation::launch_spec_t& spec) {
             hint = "; the sandbox cannot read " + core::to_display_string(*executable) +
                    " or its directory. Add the program's install directory to filesystem.read";
         }
-        return win32_error("cannot start " + core::to_display_string(*executable) + hint, code);
+        return detail::win32_error("cannot start " + core::to_display_string(*executable) + hint, code);
     }
     CloseHandle(info.hThread);
     process_.reset(info.hProcess);
@@ -443,7 +290,7 @@ result_t<void> c_windows_backend::start(const isolation::launch_spec_t& spec) {
     return core::ok();
 }
 
-result_t<isolation::sandbox_result_t> c_windows_backend::wait() {
+result_t<glaipnir::isolation::sandbox_result_t> glaipnir::platform::windows::c_windows_backend::wait() {
     if (!process_.valid() || !job_) {
         return make_error(error_code::invalid_argument, "sandbox was not started");
     }
@@ -460,7 +307,6 @@ result_t<isolation::sandbox_result_t> c_windows_backend::wait() {
                 timed_out = true;
                 break;
             }
-            // Wait in bounded slices: a DWORD timeout tops out at ~49 days.
             wait_ms = static_cast<DWORD>(std::min<long long>(remaining_ms, 24LL * 3600 * 1000));
         }
         const DWORD status = WaitForSingleObject(process_.get(), wait_ms);
@@ -468,11 +314,11 @@ result_t<isolation::sandbox_result_t> c_windows_backend::wait() {
             break;
         }
         if (status != WAIT_TIMEOUT) {
-            return last_error("waiting for sandboxed process failed");
+            return detail::last_error("waiting for sandboxed process failed");
         }
     }
     if (timed_out) {
-        (void)job_->terminate(timeout_exit_code);
+        (void)job_->terminate(detail::timeout_exit_code);
         WaitForSingleObject(process_.get(), INFINITE);
         result.reason = isolation::termination_reason::wall_timeout;
     }
@@ -493,45 +339,43 @@ result_t<isolation::sandbox_result_t> c_windows_backend::wait() {
     if (terminated_->load()) {
         result.reason = isolation::termination_reason::terminated;
     }
-    // The root exited; anything it left running (daemons, watchers) dies with the run.
     (void)job_->terminate(exit_code);
     process_.reset();
     return result;
 }
 
-result_t<void> c_windows_backend::pause() const {
+result_t<void> glaipnir::platform::windows::c_windows_backend::pause() const {
     if (!job_) {
         return make_error(error_code::invalid_argument, "sandbox was not started");
     }
     return job_->suspend();
 }
 
-result_t<void> c_windows_backend::resume() const {
+result_t<void> glaipnir::platform::windows::c_windows_backend::resume() const {
     if (!job_) {
         return make_error(error_code::invalid_argument, "sandbox was not started");
     }
     return job_->resume();
 }
 
-result_t<void> c_windows_backend::terminate() const {
+result_t<void> glaipnir::platform::windows::c_windows_backend::terminate() const {
     if (!job_) {
         return make_error(error_code::invalid_argument, "sandbox was not started");
     }
     terminated_->store(true);
-    return job_->terminate(terminated_exit_code);
+    return job_->terminate(detail::terminated_exit_code);
 }
 
-result_t<void> c_windows_backend::cleanup(std::string_view session_id, const fs::path& session_dir) {
-    const auto ledger = session_dir / ledger_file_name;
-    const auto entries = read_ledger(ledger);
+result_t<void> glaipnir::platform::windows::c_windows_backend::cleanup(std::string_view session_id,
+                                                                     const std::filesystem::path& session_dir) {
+    const auto ledger = session_dir / detail::ledger_file_name;
+    const auto entries = detail::read_ledger(ledger);
     if (!entries.empty()) {
-        auto container = c_app_container::create_or_open(container_moniker(session_id));
+        auto container = c_app_container::create_or_open(detail::container_moniker(session_id));
         if (!container) {
             return std::move(container).error();
         }
         for (const auto& entry : entries) {
-            // Paths inside the session directory are about to be deleted; re-ACLing them first
-            // would only cost a full tree walk.
             if (core::is_same_or_inside(entry.path, session_dir)) {
                 continue;
             }
@@ -542,11 +386,11 @@ result_t<void> c_windows_backend::cleanup(std::string_view session_id, const fs:
         }
     }
     std::error_code ec;
-    fs::remove(ledger, ec);
-    return c_app_container::remove(container_moniker(session_id));
+    std::filesystem::remove(ledger, ec);
+    return c_app_container::remove(detail::container_moniker(session_id));
 }
 
-result_t<void> c_windows_backend::pause_running(std::string_view session_id) {
+result_t<void> glaipnir::platform::windows::c_windows_backend::pause_running(std::string_view session_id) {
     auto job = c_job_object::open(session_id);
     if (!job) {
         return std::move(job).error();
@@ -554,7 +398,7 @@ result_t<void> c_windows_backend::pause_running(std::string_view session_id) {
     return job->suspend();
 }
 
-result_t<void> c_windows_backend::resume_running(std::string_view session_id) {
+result_t<void> glaipnir::platform::windows::c_windows_backend::resume_running(std::string_view session_id) {
     auto job = c_job_object::open(session_id);
     if (!job) {
         return std::move(job).error();
@@ -562,12 +406,10 @@ result_t<void> c_windows_backend::resume_running(std::string_view session_id) {
     return job->resume();
 }
 
-result_t<void> c_windows_backend::terminate_running(std::string_view session_id) {
+result_t<void> glaipnir::platform::windows::c_windows_backend::terminate_running(std::string_view session_id) {
     auto job = c_job_object::open(session_id);
     if (!job) {
         return std::move(job).error();
     }
-    return job->terminate(terminated_exit_code);
+    return job->terminate(detail::terminated_exit_code);
 }
-
-} // namespace glaipnir::platform::windows

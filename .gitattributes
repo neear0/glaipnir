@@ -6,3 +6,4 @@
 *.hpp text eol=lf
 *.md text eol=lf
 *.toml text eol=lf
+*.filters text eol=crlf

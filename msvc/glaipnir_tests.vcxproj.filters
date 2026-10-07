@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="tests">
+      <UniqueIdentifier>{ca55b76d-6b29-5976-c834-1258ecf5f91e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="tests\conventions">
+      <UniqueIdentifier>{eec3fbbf-2d03-ea95-a0f2-cb5cc13ba4ae}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="tests\core">
+      <UniqueIdentifier>{32c1485c-8b18-deeb-e915-b65fc005a377}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="tests\persistence">
+      <UniqueIdentifier>{37f9b00c-14fd-29ae-43c8-f260d58a14e9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="tests\platform">
+      <UniqueIdentifier>{b4aa86d6-bdbe-eabb-bea8-d88326d0de4c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="tests\platform\windows">
+      <UniqueIdentifier>{42ab8d63-c0a8-4533-ad5c-607d4275931a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="tests\policy">
+      <UniqueIdentifier>{3a3c34ac-f77c-cc4d-377a-197bf3889971}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="tests\support">
+      <UniqueIdentifier>{a66822e8-58bc-78e3-52dc-82f26251be05}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\tests\conventions\test_conventions.cpp">
+      <Filter>tests\conventions</Filter>
+    </ClCompile>
+    <ClCompile Include="..\tests\core\test_core.cpp">
+      <Filter>tests\core</Filter>
+    </ClCompile>
+    <ClCompile Include="..\tests\persistence\test_persistence.cpp">
+      <Filter>tests\persistence</Filter>
+    </ClCompile>
+    <ClCompile Include="..\tests\platform\windows\test_windows_sandbox.cpp">
+      <Filter>tests\platform\windows</Filter>
+    </ClCompile>
+    <ClCompile Include="..\tests\policy\test_policy.cpp">
+      <Filter>tests\policy</Filter>
+    </ClCompile>
+    <ClCompile Include="..\tests\support\fake_host.cpp">
+      <Filter>tests\support</Filter>
+    </ClCompile>
+    <ClInclude Include="..\tests\support\fake_host.hpp">
+      <Filter>tests\support</Filter>
+    </ClInclude>
+    <ClCompile Include="..\tests\support\sandbox_fixture.cpp">
+      <Filter>tests\support</Filter>
+    </ClCompile>
+    <ClInclude Include="..\tests\support\sandbox_fixture.hpp">
+      <Filter>tests\support</Filter>
+    </ClInclude>
+    <ClCompile Include="..\tests\support\source_scan.cpp">
+      <Filter>tests\support</Filter>
+    </ClCompile>
+    <ClInclude Include="..\tests\support\source_scan.hpp">
+      <Filter>tests\support</Filter>
+    </ClInclude>
+    <ClCompile Include="..\tests\support\test_harness.cpp">
+      <Filter>tests\support</Filter>
+    </ClCompile>
+    <ClInclude Include="..\tests\support\test_harness.hpp">
+      <Filter>tests\support</Filter>
+    </ClInclude>
+    <ClCompile Include="..\tests\test_main.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>

@@ -1,0 +1,310 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="include">
+      <UniqueIdentifier>{fddd38a0-c363-f974-dda4-be5a5abcee0e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="include\glaipnir">
+      <UniqueIdentifier>{1ceb55c3-2974-f578-1ed1-477b95c453e0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="include\glaipnir\core">
+      <UniqueIdentifier>{7d8b93b3-29f3-f2ab-4f31-d7b963fbd3ab}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="include\glaipnir\isolation">
+      <UniqueIdentifier>{75964aa4-3703-6a71-5416-3d6a5e958871}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="include\glaipnir\persistence">
+      <UniqueIdentifier>{d6c27673-92eb-79ff-4ac9-a464d1cf061d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="include\glaipnir\platform">
+      <UniqueIdentifier>{a5ff16bd-9e5d-6732-2529-5ed26f6e6986}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="include\glaipnir\platform\windows">
+      <UniqueIdentifier>{4a3b6c4c-6bd6-6249-daea-325a92f4b203}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="include\glaipnir\policy">
+      <UniqueIdentifier>{18c1e925-63bf-98c3-f99f-4f8af8f3acac}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src">
+      <UniqueIdentifier>{3acabf78-605f-9951-a1e3-4e37fcdcd9b4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\core">
+      <UniqueIdentifier>{0bd98a87-fa28-fe28-034a-eb7c13a0079f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\core\detail">
+      <UniqueIdentifier>{26065e64-ce62-d904-d39a-e04594a3b32a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\isolation">
+      <UniqueIdentifier>{6cc9fd0f-f77f-170e-b67c-22a9505a85cf}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\persistence">
+      <UniqueIdentifier>{beb32ab9-d866-4935-3530-aac493695e7d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\persistence\detail">
+      <UniqueIdentifier>{baca753a-0d7c-aaf4-564d-5c9d57238f66}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\platform">
+      <UniqueIdentifier>{310a5b40-826b-3be6-039e-04837ff7f0a0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\platform\windows">
+      <UniqueIdentifier>{89967ad0-2d94-5228-2930-e9a0101ecf1b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\platform\windows\detail">
+      <UniqueIdentifier>{ab5d92ac-7b02-cb6b-863f-102abff3de4a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\policy">
+      <UniqueIdentifier>{010e05be-369a-528e-eaac-52e8d70a2738}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\policy\detail">
+      <UniqueIdentifier>{bd918ce8-4abf-1983-4cb6-0bf01f7de7dc}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\include\glaipnir\core\c_audit_log.hpp">
+      <Filter>include\glaipnir\core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\glaipnir\core\c_sandbox.hpp">
+      <Filter>include\glaipnir\core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\glaipnir\core\c_session.hpp">
+      <Filter>include\glaipnir\core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\glaipnir\core\c_sha256.hpp">
+      <Filter>include\glaipnir\core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\glaipnir\core\error.hpp">
+      <Filter>include\glaipnir\core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\glaipnir\core\path_util.hpp">
+      <Filter>include\glaipnir\core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\glaipnir\core\validation.hpp">
+      <Filter>include\glaipnir\core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\glaipnir\isolation\isolation_types.hpp">
+      <Filter>include\glaipnir\isolation</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\glaipnir\persistence\c_volume.hpp">
+      <Filter>include\glaipnir\persistence</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\glaipnir\persistence\persistence_types.hpp">
+      <Filter>include\glaipnir\persistence</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\glaipnir\persistence\safe_fs.hpp">
+      <Filter>include\glaipnir\persistence</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\glaipnir\platform\platform.hpp">
+      <Filter>include\glaipnir\platform</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\glaipnir\platform\windows\c_app_container.hpp">
+      <Filter>include\glaipnir\platform\windows</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\glaipnir\platform\windows\c_job_object.hpp">
+      <Filter>include\glaipnir\platform\windows</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\glaipnir\platform\windows\c_unique_handle.hpp">
+      <Filter>include\glaipnir\platform\windows</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\glaipnir\platform\windows\c_windows_backend.hpp">
+      <Filter>include\glaipnir\platform\windows</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\glaipnir\platform\windows\command_line.hpp">
+      <Filter>include\glaipnir\platform\windows</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\glaipnir\platform\windows\path_acl.hpp">
+      <Filter>include\glaipnir\platform\windows</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\glaipnir\policy\c_policy.hpp">
+      <Filter>include\glaipnir\policy</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\glaipnir\policy\c_toml_reader.hpp">
+      <Filter>include\glaipnir\policy</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\glaipnir\policy\policy_types.hpp">
+      <Filter>include\glaipnir\policy</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\glaipnir\version.hpp">
+      <Filter>include\glaipnir</Filter>
+    </ClInclude>
+    <ClCompile Include="..\src\core\c_audit_log.cpp">
+      <Filter>src\core</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\core\c_sandbox.cpp">
+      <Filter>src\core</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\core\c_session.cpp">
+      <Filter>src\core</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\core\c_sha256.cpp">
+      <Filter>src\core</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\core\detail\audit_format.cpp">
+      <Filter>src\core\detail</Filter>
+    </ClCompile>
+    <ClInclude Include="..\src\core\detail\audit_format.hpp">
+      <Filter>src\core\detail</Filter>
+    </ClInclude>
+    <ClCompile Include="..\src\core\detail\identifier_rules.cpp">
+      <Filter>src\core\detail</Filter>
+    </ClCompile>
+    <ClInclude Include="..\src\core\detail\identifier_rules.hpp">
+      <Filter>src\core\detail</Filter>
+    </ClInclude>
+    <ClCompile Include="..\src\core\detail\path_compare.cpp">
+      <Filter>src\core\detail</Filter>
+    </ClCompile>
+    <ClInclude Include="..\src\core\detail\path_compare.hpp">
+      <Filter>src\core\detail</Filter>
+    </ClInclude>
+    <ClCompile Include="..\src\core\detail\session_files.cpp">
+      <Filter>src\core\detail</Filter>
+    </ClCompile>
+    <ClInclude Include="..\src\core\detail\session_files.hpp">
+      <Filter>src\core\detail</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\core\detail\sha256_rounds.hpp">
+      <Filter>src\core\detail</Filter>
+    </ClInclude>
+    <ClCompile Include="..\src\core\error.cpp">
+      <Filter>src\core</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\core\path_util.cpp">
+      <Filter>src\core</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\core\validation.cpp">
+      <Filter>src\core</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\isolation\isolation_types.cpp">
+      <Filter>src\isolation</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\persistence\c_volume.cpp">
+      <Filter>src\persistence</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\persistence\detail\checkpoint_file.cpp">
+      <Filter>src\persistence\detail</Filter>
+    </ClCompile>
+    <ClInclude Include="..\src\persistence\detail\checkpoint_file.hpp">
+      <Filter>src\persistence\detail</Filter>
+    </ClInclude>
+    <ClCompile Include="..\src\persistence\detail\fs_entry.cpp">
+      <Filter>src\persistence\detail</Filter>
+    </ClCompile>
+    <ClInclude Include="..\src\persistence\detail\fs_entry.hpp">
+      <Filter>src\persistence\detail</Filter>
+    </ClInclude>
+    <ClCompile Include="..\src\persistence\detail\tree_walk.cpp">
+      <Filter>src\persistence\detail</Filter>
+    </ClCompile>
+    <ClInclude Include="..\src\persistence\detail\tree_walk.hpp">
+      <Filter>src\persistence\detail</Filter>
+    </ClInclude>
+    <ClCompile Include="..\src\persistence\safe_fs.cpp">
+      <Filter>src\persistence</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\platform\platform.cpp">
+      <Filter>src\platform</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\platform\windows\c_app_container.cpp">
+      <Filter>src\platform\windows</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\platform\windows\c_job_object.cpp">
+      <Filter>src\platform\windows</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\platform\windows\c_unique_handle.cpp">
+      <Filter>src\platform\windows</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\platform\windows\c_windows_backend.cpp">
+      <Filter>src\platform\windows</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\platform\windows\command_line.cpp">
+      <Filter>src\platform\windows</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\platform\windows\detail\backend_support.cpp">
+      <Filter>src\platform\windows\detail</Filter>
+    </ClCompile>
+    <ClInclude Include="..\src\platform\windows\detail\backend_support.hpp">
+      <Filter>src\platform\windows\detail</Filter>
+    </ClInclude>
+    <ClCompile Include="..\src\platform\windows\detail\c_attribute_list.cpp">
+      <Filter>src\platform\windows\detail</Filter>
+    </ClCompile>
+    <ClInclude Include="..\src\platform\windows\detail\c_attribute_list.hpp">
+      <Filter>src\platform\windows\detail</Filter>
+    </ClInclude>
+    <ClCompile Include="..\src\platform\windows\detail\dacl.cpp">
+      <Filter>src\platform\windows\detail</Filter>
+    </ClCompile>
+    <ClInclude Include="..\src\platform\windows\detail\dacl.hpp">
+      <Filter>src\platform\windows\detail</Filter>
+    </ClInclude>
+    <ClCompile Include="..\src\platform\windows\detail\grant_ledger.cpp">
+      <Filter>src\platform\windows\detail</Filter>
+    </ClCompile>
+    <ClInclude Include="..\src\platform\windows\detail\grant_ledger.hpp">
+      <Filter>src\platform\windows\detail</Filter>
+    </ClInclude>
+    <ClCompile Include="..\src\platform\windows\detail\job_support.cpp">
+      <Filter>src\platform\windows\detail</Filter>
+    </ClCompile>
+    <ClInclude Include="..\src\platform\windows\detail\job_support.hpp">
+      <Filter>src\platform\windows\detail</Filter>
+    </ClInclude>
+    <ClCompile Include="..\src\platform\windows\detail\path_search.cpp">
+      <Filter>src\platform\windows\detail</Filter>
+    </ClCompile>
+    <ClInclude Include="..\src\platform\windows\detail\path_search.hpp">
+      <Filter>src\platform\windows\detail</Filter>
+    </ClInclude>
+    <ClCompile Include="..\src\platform\windows\detail\sandbox_environment.cpp">
+      <Filter>src\platform\windows\detail</Filter>
+    </ClCompile>
+    <ClInclude Include="..\src\platform\windows\detail\sandbox_environment.hpp">
+      <Filter>src\platform\windows\detail</Filter>
+    </ClInclude>
+    <ClCompile Include="..\src\platform\windows\detail\win_util.cpp">
+      <Filter>src\platform\windows\detail</Filter>
+    </ClCompile>
+    <ClInclude Include="..\src\platform\windows\detail\win_util.hpp">
+      <Filter>src\platform\windows\detail</Filter>
+    </ClInclude>
+    <ClCompile Include="..\src\platform\windows\path_acl.cpp">
+      <Filter>src\platform\windows</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\policy\c_policy.cpp">
+      <Filter>src\policy</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\policy\c_toml_reader.cpp">
+      <Filter>src\policy</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\policy\detail\c_key_reader.cpp">
+      <Filter>src\policy\detail</Filter>
+    </ClCompile>
+    <ClInclude Include="..\src\policy\detail\c_key_reader.hpp">
+      <Filter>src\policy\detail</Filter>
+    </ClInclude>
+    <ClCompile Include="..\src\policy\detail\c_toml_parser.cpp">
+      <Filter>src\policy\detail</Filter>
+    </ClCompile>
+    <ClInclude Include="..\src\policy\detail\c_toml_parser.hpp">
+      <Filter>src\policy\detail</Filter>
+    </ClInclude>
+    <ClCompile Include="..\src\policy\detail\net_rule_parser.cpp">
+      <Filter>src\policy\detail</Filter>
+    </ClCompile>
+    <ClInclude Include="..\src\policy\detail\net_rule_parser.hpp">
+      <Filter>src\policy\detail</Filter>
+    </ClInclude>
+    <ClCompile Include="..\src\policy\detail\policy_checks.cpp">
+      <Filter>src\policy\detail</Filter>
+    </ClCompile>
+    <ClInclude Include="..\src\policy\detail\policy_checks.hpp">
+      <Filter>src\policy\detail</Filter>
+    </ClInclude>
+    <ClCompile Include="..\src\policy\detail\toml_text.cpp">
+      <Filter>src\policy\detail</Filter>
+    </ClCompile>
+    <ClInclude Include="..\src\policy\detail\toml_text.hpp">
+      <Filter>src\policy\detail</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>

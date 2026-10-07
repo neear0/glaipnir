@@ -6,8 +6,6 @@
 #ifdef _WIN32
 #include "glaipnir/core/path_util.hpp"
 
-// wmain receives UTF-16 arguments; plain main would get them lossily converted to the ANSI
-// code page, mangling non-ASCII paths and arguments before glaipnir ever sees them.
 int wmain(int argc, wchar_t** argv) {
     std::vector<std::string> args;
     for (int i = 1; i < argc; ++i) {

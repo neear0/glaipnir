@@ -1,8 +1,6 @@
 #include "glaipnir/core/error.hpp"
 
-namespace glaipnir::core {
-
-std::string_view to_string(error_code code) noexcept {
+std::string_view glaipnir::core::to_string(error_code code) noexcept {
     switch (code) {
     case error_code::invalid_argument: return "invalid_argument";
     case error_code::invalid_policy: return "invalid_policy";
@@ -19,7 +17,7 @@ std::string_view to_string(error_code code) noexcept {
     return "unknown";
 }
 
-std::string describe(const error_t& error) {
+std::string glaipnir::core::describe(const error_t& error) {
     std::string text{to_string(error.code)};
     text += ": ";
     text += error.message;
@@ -30,5 +28,3 @@ std::string describe(const error_t& error) {
     }
     return text;
 }
-
-} // namespace glaipnir::core

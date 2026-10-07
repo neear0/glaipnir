@@ -1,44 +1,15 @@
 #include "glaipnir/platform/windows/command_line.hpp"
 
-#include "win_util.hpp"
+#include "platform/windows/detail/path_search.hpp"
+#include "platform/windows/detail/win_util.hpp"
 
 #include <optional>
 #include <system_error>
 
-namespace glaipnir::platform::windows {
+using glaipnir::core::error_code;
+using glaipnir::core::result_t;
 
-using core::error_code;
-using core::result_t;
-
-namespace fs = std::filesystem;
-
-namespace {
-
-std::vector<std::wstring> split(std::wstring_view text, wchar_t separator) {
-    std::vector<std::wstring> parts;
-    std::size_t start = 0;
-    while (start <= text.size()) {
-        const auto end = text.find(separator, start);
-        const auto part = text.substr(start, end == std::wstring_view::npos ? std::wstring_view::npos : end - start);
-        if (!part.empty()) {
-            parts.emplace_back(part);
-        }
-        if (end == std::wstring_view::npos) {
-            break;
-        }
-        start = end + 1;
-    }
-    return parts;
-}
-
-bool is_existing_file(const fs::path& path) {
-    std::error_code ec;
-    return fs::is_regular_file(path, ec);
-}
-
-} // namespace
-
-std::wstring quote_argument(std::wstring_view argument) {
+std::wstring glaipnir::platform::windows::quote_argument(std::wstring_view argument) {
     if (!argument.empty() && argument.find_first_of(L" \t\n\v\"") == std::wstring_view::npos) {
         return std::wstring{argument};
     }
@@ -50,7 +21,6 @@ std::wstring quote_argument(std::wstring_view argument) {
             ++backslashes;
         }
         if (i == argument.size()) {
-            // Backslashes before the closing quote must be doubled or they would escape it.
             quoted.append(backslashes * 2, L'\\');
             break;
         }
@@ -66,7 +36,7 @@ std::wstring quote_argument(std::wstring_view argument) {
     return quoted;
 }
 
-result_t<std::wstring> build_command_line(const std::vector<std::wstring>& argv) {
+result_t<std::wstring> glaipnir::platform::windows::build_command_line(const std::vector<std::wstring>& argv) {
     if (argv.empty()) {
         return core::make_error(error_code::invalid_argument, "command is empty");
     }
@@ -83,7 +53,6 @@ result_t<std::wstring> build_command_line(const std::vector<std::wstring>& argv)
             line += quote_argument(argv[i]);
             continue;
         }
-        // The program name ends at the first space (or the closing quote) with no escapes.
         const bool needs_quotes = argv[0].empty() || argv[0].find_first_of(L" \t") != std::wstring::npos;
         line += needs_quotes ? L"\"" + argv[0] + L"\"" : argv[0];
     }
@@ -93,24 +62,26 @@ result_t<std::wstring> build_command_line(const std::vector<std::wstring>& argv)
     return line;
 }
 
-result_t<fs::path> resolve_executable(std::wstring_view name, std::wstring_view search_path, std::wstring_view extensions) {
+result_t<std::filesystem::path> glaipnir::platform::windows::resolve_executable(std::wstring_view name,
+                                                                              std::wstring_view search_path,
+                                                                              std::wstring_view extensions) {
     if (name.empty()) {
         return core::make_error(error_code::invalid_argument, "program name is empty");
     }
-    const fs::path requested{name};
+    const std::filesystem::path requested{name};
     std::vector<std::wstring> suffixes{L""};
     if (!requested.has_extension()) {
-        for (auto& extension : split(extensions.empty() ? std::wstring_view{L".COM;.EXE"} : extensions, L';')) {
+        for (auto& extension : detail::split_list(extensions.empty() ? std::wstring_view{L".COM;.EXE"} : extensions, L';')) {
             suffixes.push_back(std::move(extension));
         }
     }
-    const auto try_candidates = [&](const fs::path& base) -> std::optional<fs::path> {
+    const auto try_candidates = [&](const std::filesystem::path& base) -> std::optional<std::filesystem::path> {
         for (const auto& suffix : suffixes) {
-            fs::path candidate = base;
+            std::filesystem::path candidate = base;
             candidate += suffix;
-            if (is_existing_file(candidate)) {
+            if (detail::is_existing_file(candidate)) {
                 std::error_code ec;
-                auto absolute = fs::absolute(candidate, ec);
+                auto absolute = std::filesystem::absolute(candidate, ec);
                 return ec ? candidate : absolute;
             }
         }
@@ -122,13 +93,11 @@ result_t<fs::path> resolve_executable(std::wstring_view name, std::wstring_view 
             return *found;
         }
     } else {
-        for (const auto& directory : split(search_path, L';')) {
-            if (auto found = try_candidates(fs::path{directory} / requested)) {
+        for (const auto& directory : detail::split_list(search_path, L';')) {
+            if (auto found = try_candidates(std::filesystem::path{directory} / requested)) {
                 return *found;
             }
         }
     }
-    return core::make_error(error_code::not_found, "program '" + from_wide(name) + "' not found");
+    return core::make_error(error_code::not_found, "program '" + detail::from_wide(name) + "' not found");
 }
-
-} // namespace glaipnir::platform::windows

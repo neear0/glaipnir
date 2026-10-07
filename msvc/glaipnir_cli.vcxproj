@@ -35,9 +35,19 @@
   <PropertyGroup>
     <TargetName>glaipnir</TargetName>
   </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(GlaipnirRoot)cli;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\cli\*.cpp" />
-    <ClInclude Include="..\cli\*.hpp" />
+    <ClCompile Include="..\cli\c_cli.cpp" />
+    <ClInclude Include="..\cli\c_cli.hpp" />
+    <ClCompile Include="..\cli\detail\cli_output.cpp" />
+    <ClInclude Include="..\cli\detail\cli_output.hpp" />
+    <ClCompile Include="..\cli\detail\console.cpp" />
+    <ClInclude Include="..\cli\detail\console.hpp" />
+    <ClCompile Include="..\cli\main.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="glaipnir_lib.vcxproj">

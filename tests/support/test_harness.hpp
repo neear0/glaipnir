@@ -1,35 +1,28 @@
 #pragma once
 
-// Minimal self-registering test harness. No third-party framework so the test binary builds
-// with nothing but the compiler, like the rest of glaipnir.
-
 #include <filesystem>
 #include <string>
 #include <vector>
 
 namespace glaipnir::test {
 
-/// One registered test.
 struct test_case_t {
     const char* name;
     void (*body)();
 };
 
-/// All tests, in registration order.
 std::vector<test_case_t>& registry();
 
-/// Registers a test at static-initialization time.
 struct registrar_t {
     registrar_t(const char* name, void (*body)()) { registry().push_back({name, body}); }
 };
 
-/// Records a failed check for the running test.
+int& current_failure_count();
+
 void report_failure(const char* file, int line, const std::string& expression);
 
-/// Prints a note under the running test (for skipped or informational checks).
 void note(const std::string& message);
 
-/// Fresh, empty directory under the system temp dir, removed on destruction.
 class c_temp_dir {
 public:
     c_temp_dir();
@@ -43,13 +36,11 @@ private:
     std::filesystem::path path_;
 };
 
-/// Whole-file read; empty string if missing.
 std::string read_file(const std::filesystem::path& path);
 
-/// Whole-file write.
 void write_file(const std::filesystem::path& path, const std::string& content);
 
-} // namespace glaipnir::test
+}
 
 #define glaipnir_test(name)                                                                                            \
     static void name();                                                                                                \
@@ -71,7 +62,6 @@ void write_file(const std::filesystem::path& path, const std::string& content);
         }                                                                                                              \
     } while (false)
 
-/// Like glaipnir_require for result_t values, printing the error on failure.
 #define glaipnir_require_ok(result)                                                                                    \
     do {                                                                                                               \
         if (!(result)) {                                                                                               \

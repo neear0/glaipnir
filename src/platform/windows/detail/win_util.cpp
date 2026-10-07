@@ -1,21 +1,6 @@
-#include "win_util.hpp"
+#include "platform/windows/detail/win_util.hpp"
 
-#include "glaipnir/platform/windows/c_unique_handle.hpp"
-
-namespace glaipnir::platform::windows {
-
-void c_unique_handle::reset(void* handle) noexcept {
-    if (valid()) {
-        CloseHandle(handle_);
-    }
-    handle_ = handle;
-}
-
-bool c_unique_handle::valid() const noexcept {
-    return handle_ != nullptr && handle_ != INVALID_HANDLE_VALUE;
-}
-
-std::wstring to_wide(std::string_view text) {
+std::wstring glaipnir::platform::windows::detail::to_wide(std::string_view text) {
     if (text.empty()) {
         return {};
     }
@@ -25,7 +10,7 @@ std::wstring to_wide(std::string_view text) {
     return wide;
 }
 
-std::string from_wide(std::wstring_view text) {
+std::string glaipnir::platform::windows::detail::from_wide(std::wstring_view text) {
     if (text.empty()) {
         return {};
     }
@@ -35,7 +20,7 @@ std::string from_wide(std::wstring_view text) {
     return narrow;
 }
 
-std::string win32_message(DWORD code) {
+std::string glaipnir::platform::windows::detail::win32_message(DWORD code) {
     wchar_t* buffer = nullptr;
     const DWORD length = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
                                             FORMAT_MESSAGE_IGNORE_INSERTS,
@@ -51,15 +36,14 @@ std::string win32_message(DWORD code) {
     return message;
 }
 
-core::error_t last_error(std::string_view what, core::error_code code) {
+glaipnir::core::error_t glaipnir::platform::windows::detail::last_error(std::string_view what, core::error_code code) {
     return win32_error(what, GetLastError(), code);
 }
 
-core::error_t win32_error(std::string_view what, DWORD code, core::error_code category) {
+glaipnir::core::error_t glaipnir::platform::windows::detail::win32_error(std::string_view what, DWORD code,
+                                                                       core::error_code category) {
     if (code == ERROR_ACCESS_DENIED && category == core::error_code::platform_error) {
         category = core::error_code::permission_denied;
     }
     return core::make_error(category, std::string{what} + ": " + win32_message(code), static_cast<long>(code));
 }
-
-} // namespace glaipnir::platform::windows

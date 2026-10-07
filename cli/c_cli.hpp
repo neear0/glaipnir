@@ -6,18 +6,14 @@
 
 namespace glaipnir::cli {
 
-/// Process exit codes used when glaipnir itself (not the sandboxed command) decides the outcome.
 inline constexpr int exit_usage = 2;
-inline constexpr int exit_timeout = 124;   ///< same as coreutils timeout(1)
-inline constexpr int exit_internal = 125;  ///< same as docker run: the sandbox could not be set up
+inline constexpr int exit_timeout = 124;
+inline constexpr int exit_internal = 125;
 
-/// Command-line front end. Parses arguments, dispatches to the library, prints results.
 class c_cli {
 public:
-    /// @param args UTF-8 arguments without the program name
     explicit c_cli(std::vector<std::string> args);
 
-    /// Executes the command and returns the process exit code.
     int execute();
 
 private:
@@ -31,4 +27,4 @@ private:
     std::filesystem::path state_root_;
 };
 
-} // namespace glaipnir::cli
+}

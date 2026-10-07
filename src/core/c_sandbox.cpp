@@ -4,14 +4,11 @@
 
 #include "glaipnir/core/path_util.hpp"
 
-namespace glaipnir::core {
-
-namespace fs = std::filesystem;
-
-c_sandbox::c_sandbox(policy::c_policy policy, c_session& session, platform::platform_backend backend)
+glaipnir::core::c_sandbox::c_sandbox(policy::c_policy policy, c_session& session, platform::platform_backend backend)
     : policy_(std::move(policy)), session_(&session), backend_(std::move(backend)) {}
 
-result_t<c_sandbox> c_sandbox::create(policy::c_policy policy, c_session& session) {
+glaipnir::core::result_t<glaipnir::core::c_sandbox> glaipnir::core::c_sandbox::create(policy::c_policy policy,
+                                                                                      c_session& session) {
     (void)session.audit().record("policy.apply", std::format("name={} digest={}", policy.data().name, policy.digest()));
     auto backend = platform::platform_backend::prepare(policy, session.session_id(), session.directory(),
                                                        session.volume().workspace(), session.audit());
@@ -22,9 +19,10 @@ result_t<c_sandbox> c_sandbox::create(policy::c_policy policy, c_session& sessio
     return c_sandbox{std::move(policy), session, std::move(*backend)};
 }
 
-result_t<void> c_sandbox::start(const std::vector<std::string>& argv, const fs::path& working_directory) {
+glaipnir::core::result_t<void> glaipnir::core::c_sandbox::start(const std::vector<std::string>& argv,
+                                                                const std::filesystem::path& working_directory) {
     const auto workspace = session_->volume().workspace();
-    fs::path cwd = workspace;
+    std::filesystem::path cwd = workspace;
     if (!working_directory.empty()) {
         cwd = normalize_path(working_directory.is_absolute() ? working_directory : workspace / working_directory);
         if (!is_same_or_inside(cwd, workspace)) {
@@ -32,7 +30,6 @@ result_t<void> c_sandbox::start(const std::vector<std::string>& argv, const fs::
         }
     }
 
-    // The environment is built only from what the policy declares; the host's is never copied.
     isolation::launch_spec_t spec;
     spec.argv = argv;
     spec.working_directory = cwd;
@@ -59,7 +56,7 @@ result_t<void> c_sandbox::start(const std::vector<std::string>& argv, const fs::
     return ok();
 }
 
-result_t<isolation::sandbox_result_t> c_sandbox::wait() {
+glaipnir::core::result_t<glaipnir::isolation::sandbox_result_t> glaipnir::core::c_sandbox::wait() {
     auto result = backend_.wait();
     if (result) {
         (void)session_->audit().record(
@@ -70,7 +67,8 @@ result_t<isolation::sandbox_result_t> c_sandbox::wait() {
     return result;
 }
 
-result_t<isolation::sandbox_result_t> c_sandbox::run(const std::vector<std::string>& argv, const fs::path& working_directory) {
+glaipnir::core::result_t<glaipnir::isolation::sandbox_result_t>
+glaipnir::core::c_sandbox::run(const std::vector<std::string>& argv, const std::filesystem::path& working_directory) {
     auto started = start(argv, working_directory);
     if (!started) {
         return std::move(started).error();
@@ -78,7 +76,7 @@ result_t<isolation::sandbox_result_t> c_sandbox::run(const std::vector<std::stri
     return wait();
 }
 
-result_t<void> c_sandbox::pause() {
+glaipnir::core::result_t<void> glaipnir::core::c_sandbox::pause() {
     auto paused = backend_.pause();
     if (paused) {
         (void)session_->audit().record("exec.pause", "");
@@ -86,7 +84,7 @@ result_t<void> c_sandbox::pause() {
     return paused;
 }
 
-result_t<void> c_sandbox::resume() {
+glaipnir::core::result_t<void> glaipnir::core::c_sandbox::resume() {
     auto resumed = backend_.resume();
     if (resumed) {
         (void)session_->audit().record("exec.resume", "");
@@ -94,8 +92,6 @@ result_t<void> c_sandbox::resume() {
     return resumed;
 }
 
-result_t<void> c_sandbox::terminate() const {
+glaipnir::core::result_t<void> glaipnir::core::c_sandbox::terminate() const {
     return backend_.terminate();
 }
-
-} // namespace glaipnir::core

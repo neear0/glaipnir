@@ -36,12 +36,24 @@
     <TargetName>glaipnir_tests</TargetName>
   </PropertyGroup>
   <ItemGroup>
-    <ClCompile Include="..\tests\*.cpp" />
-    <ClInclude Include="..\tests\*.hpp" />
+    <ClCompile Include="..\tests\conventions\test_conventions.cpp" />
+    <ClCompile Include="..\tests\core\test_core.cpp" />
+    <ClCompile Include="..\tests\persistence\test_persistence.cpp" />
+    <ClCompile Include="..\tests\platform\windows\test_windows_sandbox.cpp" />
+    <ClCompile Include="..\tests\policy\test_policy.cpp" />
+    <ClCompile Include="..\tests\support\fake_host.cpp" />
+    <ClInclude Include="..\tests\support\fake_host.hpp" />
+    <ClCompile Include="..\tests\support\sandbox_fixture.cpp" />
+    <ClInclude Include="..\tests\support\sandbox_fixture.hpp" />
+    <ClCompile Include="..\tests\support\source_scan.cpp" />
+    <ClInclude Include="..\tests\support\source_scan.hpp" />
+    <ClCompile Include="..\tests\support\test_harness.cpp" />
+    <ClInclude Include="..\tests\support\test_harness.hpp" />
+    <ClCompile Include="..\tests\test_main.cpp" />
   </ItemGroup>
   <ItemDefinitionGroup>
     <ClCompile>
-      <AdditionalIncludeDirectories>$(GlaipnirRoot)src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(GlaipnirRoot)tests;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <AdditionalDependencies>shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>

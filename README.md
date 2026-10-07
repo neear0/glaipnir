@@ -121,16 +121,23 @@ Platform-specific details and known limitations are in [docs/windows.md](docs/wi
 ## Code layout
 
 ```
-include/glaipnir/   public headers (core, policy, persistence, isolation, platform)
-src/                implementations; src/platform/windows is the Windows backend
-cli/                the glaipnir command-line tool
-tests/              self-registering test harness, unit + Windows integration tests
-policies/           example policies
-msvc/               Visual Studio projects (shared settings in glaipnir.props)
+include/glaipnir/<area>/      public headers (core, policy, persistence, isolation, platform)
+src/<area>/                   implementations; src/platform/windows is the Windows backend
+src/<area>/detail/            private helpers, namespace glaipnir::<area>::detail
+cli/  cli/detail/             the glaipnir command-line tool
+tests/<area>/                 tests per area; tests/support/ holds the harness and fixtures
+policies/                     example policies
+msvc/                         Visual Studio projects (shared settings in glaipnir.props)
 ```
 
-Naming rules (enforced by `tests/test_conventions.cpp`): classes start with `c_`, structs end with
-`_t`, everything else is `snake_case`.
+Coding rules (enforced by `tests/conventions/test_conventions.cpp`):
+
+- Classes start with `c_`, structs end with `_t`, everything else is `snake_case`.
+- `.cpp` files never use the `namespace` keyword: no namespace blocks, no anonymous namespaces,
+  no aliases, no `using namespace`. Every definition is written with its qualified name, e.g.
+  `void glaipnir::core::c_sha256::update(...)`. File-private helpers go in a named `detail`
+  namespace declared in a header under the area's `detail/` folder.
+- `.cpp` file names are unique within a project (MSBuild puts all object files in one folder).
 
 ## Roadmap
 
