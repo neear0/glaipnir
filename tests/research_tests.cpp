@@ -52,8 +52,12 @@ int wmain(int argc, wchar_t** argv) {
         auto inspected = execute("crash_info", {{"path", harness::path_text(path)}});
         harness::tests::check(inspected.at("ok") == true && inspected.at("architecture") == architecture && inspected.at("has_exception") == true &&
             inspected.at("exception").at("code") == EXCEPTION_ACCESS_VIOLATION && inspected.at("threads").size() >= 1, "read actual minidump: " + harness::dump_json(inspected));
-        harness::tests::check(inspected.at("exception").at("context_bytes") == (architecture == "x86" ? 716 : 1232) &&
-            inspected.at("exception").at("program_counter") == crash.at("snapshot").at("registers").at(architecture == "x86" ? "eip" : "rip"), "saved context matches captured registers");
+        const auto expected_pc = crash.at("snapshot").at("registers").at(architecture == "x86" ? "eip" : "rip");
+        // DbgHelp may append processor-state extensions beyond the base CONTEXT.
+        harness::tests::check(inspected.at("exception").at("context_bytes").get<unsigned>() >= (architecture == "x86" ? 716u : 1232u) &&
+            inspected.at("exception").at("program_counter") == expected_pc,
+            "saved context matches captured registers: bytes=" + harness::dump_json(inspected.at("exception").at("context_bytes")) +
+            " saved=" + harness::dump_json(inspected.at("exception").at("program_counter")) + " expected=" + harness::dump_json(expected_pc));
         auto replayed = execute("crash_replay", {{"manifest", harness::path_text(evidence(result, crash.at("reproducer")))}});
         harness::tests::check(replayed.at("reproduced") == true, "debugger-generated replay manifest");
         auto repeated = run({{"arguments", {"crash"}}, {"entry_breakpoint", false}, {"dump_on_crash", false}});
