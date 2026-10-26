@@ -160,6 +160,7 @@ int wmain(int argc, wchar_t** argv) {
             }
             server.finish();
             harness::tests::require(server.requests.size() == 2, "two HTTP turns");
+            harness::tests::require(server.headers.front().find("glAIpnir/" HARNESS_VERSION) != std::string::npos, "versioned HTTP user agent");
             const auto second = harness::dump_json(server.requests.back());
             harness::tests::require(second.find("fixture-command") != std::string::npos && second.find("fixture-run") != std::string::npos, "results returned to model");
             if (provider == "openai") harness::tests::require(second.find("opaque-continuation") != std::string::npos && second.find("function_call_output") != std::string::npos, "reasoning and call outputs preserved");

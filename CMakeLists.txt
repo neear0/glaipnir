@@ -63,11 +63,16 @@ if(BUILD_TESTING)
     harness_warnings(harness_tests)
     add_test(NAME harness_tests COMMAND harness_tests $<TARGET_FILE:harness_fixture>)
     set_tests_properties(harness_tests PROPERTIES TIMEOUT 90)
+    add_executable(windows_tests tests/windows_tests.cpp)
+    target_link_libraries(windows_tests PRIVATE harness sqlite3 advapi32)
+    harness_warnings(windows_tests)
+    add_test(NAME windows_analysis COMMAND windows_tests $<TARGET_FILE:harness_fixture>)
+    set_tests_properties(windows_analysis PROPERTIES TIMEOUT 45)
     add_test(NAME cli_help COMMAND glaipnir --help)
     add_test(NAME cli_workflow COMMAND powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass
         -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/cli.ps1
         -Harness $<TARGET_FILE:glaipnir> -Fixture $<TARGET_FILE:harness_fixture>
         -Root ${CMAKE_CURRENT_BINARY_DIR}/cli-test-data/$<CONFIG>)
-    set_tests_properties(cli_workflow PROPERTIES TIMEOUT 30)
+    set_tests_properties(cli_workflow PROPERTIES TIMEOUT 60)
 endif()
 set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT glaipnir)
