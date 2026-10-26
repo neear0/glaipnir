@@ -61,18 +61,27 @@ harness::json_t harness::research::tool_definitions() {
         {"max_events", integer(16, 4096)}, {"dump_on_crash", boolean}};
     json_t attach = {{"pid", integer(1, 0xffffffff)}, {"creation_time", text}, {"monitor_ms", integer(1, 3600000)},
         {"memory_reads", {{"type", "array"}, {"items", memory}}}, {"max_events", integer(16, 4096)}, {"dump_on_crash", boolean}};
+    json_t fuzzing = {{"executable", text}, {"arguments", arguments}, {"working_directory", text}, {"corpus", text},
+        {"input_mode", {{"type", "string"}, {"enum", {"file", "stdin"}}}}, {"iterations", integer(1, 1000)},
+        {"random_seed", integer(0, 0xffffffff)}, {"max_input_bytes", integer(1, 1024 * 1024)}, {"case_timeout_ms", integer(1, 60000)},
+        {"artifact_limit", integer(1024, 256 * 1024 * 1024)}, {"max_crashes", integer(1, 64)}, {"stop_on_crash", boolean},
+        {"dictionary", {{"type", "array"}, {"items", text}}}};
     return json_t::array({
         {{"name", "debug_run"}, {"description", "Launch a local executable under the Windows user-mode debugger. Capture events, one-shot RVA breakpoints, instruction steps, registers, stacks, memory and unhandled-crash minidumps."}, {"parameters", schema(launch, {"executable", "arguments"})}},
         {{"name", "debug_attach"}, {"description", "Attach to an existing process, collect thread state and debug events for a bounded interval, then detach. Never terminate the attached process."}, {"parameters", schema(attach, {"pid"})}},
+        {{"name", "fuzz_run"}, {"description", "Run a reproducible seed-based mutation campaign through the native debugger. Supports file arguments using {input}, or redirected stdin. Preserve cases, crash signatures, minidumps and replay manifests."}, {"parameters", schema(fuzzing, {"executable", "arguments", "corpus"})}},
+        {{"name", "crash_replay"}, {"description", "Verify executable/input hashes from a saved crash manifest, rerun the exact case under the debugger, and compare the crash signature."}, {"parameters", schema({{"manifest", text}, {"executable", text}, {"working_directory", text}, {"timeout_ms", integer(1, 60000)}}, {"manifest"})}},
         {{"name", "dump_process"}, {"description", "Collect a bounded native minidump of a running process for manual investigation. This does not label a live snapshot as a crash."}, {"parameters", schema({{"pid", integer(1, 0xffffffff)}, {"creation_time", text}, {"artifact_limit", integer(1024, 256 * 1024 * 1024)}}, {"pid"})}},
         {{"name", "crash_info"}, {"description", "Inspect the architecture, exception, threads and modules in a saved Windows minidump."}, {"parameters", schema({{"path", text}}, {"path"})}}
     });
 }
 bool harness::research::is_research_tool(const std::string& name) {
-    return name == "debug_run" || name == "debug_attach" || name == "dump_process" || name == "crash_info";
+    return name == "debug_run" || name == "debug_attach" || name == "fuzz_run" || name == "crash_replay" || name == "dump_process" || name == "crash_info";
 }
 harness::json_t harness::research::worker_execute(const std::string& name, const harness::json_t& args, harness::research::c_context& context) {
     if (name == "debug_run" || name == "debug_attach") { c_debugger debugger(context); return debugger.run(args, "debug", name == "debug_attach"); }
+    if (name == "fuzz_run") return fuzz(args, context);
+    if (name == "crash_replay") return replay(args, context);
     if (name == "dump_process") return dump_process(args, context);
     if (name == "crash_info") return inspect_dump(resolve_path(args.at("path"), context.directory));
     throw std::runtime_error("Unknown research worker operation");

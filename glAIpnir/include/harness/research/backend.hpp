@@ -71,6 +71,8 @@ bool is_research_tool(const std::string& name);
 json_t execute(const std::string& name, const json_t& args, const std::filesystem::path& directory,
     const limits_t& limits, const std::atomic_bool& cancelled, const std::filesystem::path& workspace);
 json_t worker_execute(const std::string& name, const json_t& args, c_context& context);
+json_t fuzz(const json_t& args, c_context& context);
+json_t replay(const json_t& args, c_context& context);
 json_t dump_process(const json_t& args, c_context& context);
 json_t inspect_dump(const std::filesystem::path& path);
 json_t write_dump(HANDLE process, DWORD pid, const std::filesystem::path& path, std::uintmax_t limit,

@@ -37,6 +37,7 @@ add_library(harness STATIC
     glAIpnir/src/research/transport.cpp
     glAIpnir/src/research/debugger.cpp
     glAIpnir/src/research/crash.cpp
+    glAIpnir/src/research/fuzzer.cpp
     glAIpnir/src/ai/model.cpp
     glAIpnir/src/ai/http.cpp
     glAIpnir/src/cli/cli.cpp)
