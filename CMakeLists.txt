@@ -85,6 +85,9 @@ harness_warnings(glaipnir_worker)
 include(CTest)
 if(BUILD_TESTING)
     add_executable(harness_fixture tests/fixture.cpp)
+    add_executable(research_fixture tests/research_fixture.cpp)
+    target_compile_features(research_fixture PRIVATE cxx_std_20)
+    target_compile_options(research_fixture PRIVATE /utf-8)
     target_compile_features(harness_fixture PRIVATE cxx_std_20)
     add_executable(harness_tests tests/tests.cpp)
     target_link_libraries(harness_tests PRIVATE harness ws2_32)
@@ -97,12 +100,31 @@ if(BUILD_TESTING)
     harness_warnings(windows_tests)
     add_test(NAME windows_analysis COMMAND windows_tests $<TARGET_FILE:harness_fixture>)
     set_tests_properties(windows_analysis PROPERTIES TIMEOUT 45)
+    add_executable(research_tests tests/research_tests.cpp)
+    target_link_libraries(research_tests PRIVATE harness advapi32)
+    add_dependencies(research_tests glaipnir_worker research_fixture)
+    harness_warnings(research_tests)
+    add_test(NAME research_backend COMMAND research_tests $<TARGET_FILE:research_fixture>)
+    set_tests_properties(research_backend PROPERTIES TIMEOUT 120)
+    set(HARNESS_X86_FIXTURE_ROOT "${CMAKE_SOURCE_DIR}/out/build/research-x86" CACHE PATH "Optional standalone Win32 research fixture build")
+    if(EXISTS "${HARNESS_X86_FIXTURE_ROOT}/CMakeCache.txt")
+        add_custom_target(research_fixture_x86
+            COMMAND ${CMAKE_COMMAND} --build ${HARNESS_X86_FIXTURE_ROOT} --config $<CONFIG>
+            COMMENT "Building WOW64 research fixture")
+        add_dependencies(research_tests research_fixture_x86)
+        add_test(NAME research_backend_x86 COMMAND research_tests ${HARNESS_X86_FIXTURE_ROOT}/$<CONFIG>/research_fixture.exe x86)
+        set_tests_properties(research_backend_x86 PROPERTIES TIMEOUT 120)
+    endif()
     add_test(NAME cli_help COMMAND glaipnir --help)
     add_test(NAME cli_workflow COMMAND powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass
         -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/cli.ps1
         -Harness $<TARGET_FILE:glaipnir> -Fixture $<TARGET_FILE:harness_fixture>
         -Root ${CMAKE_CURRENT_BINARY_DIR}/cli-test-data/$<CONFIG>)
     set_tests_properties(cli_workflow PROPERTIES TIMEOUT 60)
-
+    add_test(NAME research_cli COMMAND powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass
+        -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/research_cli.ps1
+        -Harness $<TARGET_FILE:glaipnir> -Fixture $<TARGET_FILE:research_fixture>
+        -Root ${CMAKE_CURRENT_BINARY_DIR}/research-cli-data/$<CONFIG>)
+    set_tests_properties(research_cli PROPERTIES TIMEOUT 60)
 endif()
 set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT glaipnir)

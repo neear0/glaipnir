@@ -145,7 +145,8 @@ int wmain(int argc, wchar_t** argv) {
             std::vector<harness::tool_call_t> calls = {
                 {"meta", "file_metadata", {{"path", harness::path_text(fixture)}}},
                 {"run", "process_launch", {{"executable", harness::path_text(fixture)}, {"arguments", {"fixture-run"}}}},
-                {"shell", "shell_execute", {{"shell", "cmd"}, {"command", "echo fixture-command"}}}
+                {"shell", "shell_execute", {{"shell", "cmd"}, {"command", "echo fixture-command"}}},
+                {"debug", "debug_run", {{"executable", harness::path_text(fixture)}, {"arguments", {"fixture-debug"}}, {"entry_breakpoint", false}}}
             };
             harness::tests::c_http_fixture server({{200, calls_response(provider, calls), ""}, {200, final_response(provider), ""}});
             SetEnvironmentVariableW(L"GLAIPNIR_TEST_KEY", L"fixture-secret");
@@ -155,7 +156,7 @@ int wmain(int argc, wchar_t** argv) {
                 harness::storage::c_evidence_store store(location); std::atomic_bool cancel{false}; harness::c_runtime runtime(store, config, cancel);
                 id = runtime.create_session(fixture); auto result = runtime.investigate(id, "Inspect this fixture", "test");
                 harness::tests::require(result.at("ok") == true && result.at("turns") == 2, "complete investigation: " + harness::dump_json(result));
-                harness::tests::require(store.records(id, "task").size() == 3 && store.records(id, "observation").size() == 3, "evidence collected");
+                harness::tests::require(store.records(id, "task").size() == 4 && store.records(id, "observation").size() == 4, "evidence collected");
                 harness::tests::require(store.records(id, "finding").empty() && store.records(id, "summary").front().at("data").at("verified") == false, "no automatic verified finding");
             }
             server.finish();
@@ -166,14 +167,14 @@ int wmain(int argc, wchar_t** argv) {
             if (provider == "openai") harness::tests::require(second.find("opaque-continuation") != std::string::npos && second.find("function_call_output") != std::string::npos, "reasoning and call outputs preserved");
             if (provider == "anthropic") {
                 const auto& messages = server.requests.back().at("messages");
-                harness::tests::require(messages.back().at("content").size() == 3 && messages.back().at("content").front().at("type") == "tool_result", "grouped tool results");
+                harness::tests::require(messages.back().at("content").size() == 4 && messages.back().at("content").front().at("type") == "tool_result", "grouped tool results");
                 harness::tests::require(server.headers.front().find("x-api-key: fixture-secret") != std::string::npos, "Anthropic auth");
             } else harness::tests::require(server.headers.front().find("Authorization: Bearer fixture-secret") != std::string::npos, "Bearer auth");
             {
                 harness::storage::c_evidence_store store(location); auto exported = root / harness::widen(provider + "-export");
                 store.export_session(id, exported); const auto history = harness::dump_json(harness::read_json(exported / L"history.json"));
                 harness::tests::require(history.find("fixture-secret") == std::string::npos && history.find("must-not-be-saved") == std::string::npos, "credentials excluded");
-                harness::tests::require(harness::read_json(exported / L"reproduction.json").at("operations").size() == 3, "reproduction operations");
+                harness::tests::require(harness::read_json(exported / L"reproduction.json").at("operations").size() == 4, "reproduction operations");
             }
         });
     }

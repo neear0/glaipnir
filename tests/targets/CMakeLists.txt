@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.24)
+project(glaipnir_research_targets LANGUAGES CXX)
+set(CMAKE_VS_GLOBALS "VcpkgEnabled=false")
+add_executable(research_fixture ../research_fixture.cpp)
+target_compile_features(research_fixture PRIVATE cxx_std_20)
+target_compile_options(research_fixture PRIVATE /utf-8)

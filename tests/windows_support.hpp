@@ -12,8 +12,9 @@ template<class c_function> void fails(c_function function, const std::string& me
 }
 class c_process_fixture {
 public:
-    explicit c_process_fixture(const std::filesystem::path& executable) {
-        auto command = quote_argument(executable.wstring()) + L" sleep";
+    explicit c_process_fixture(const std::filesystem::path& executable, const std::vector<std::string>& arguments = {"sleep"}) {
+        auto command = quote_argument(executable.wstring());
+        for (const auto& argument : arguments) { command += L' '; command += quote_argument(widen(argument)); }
         STARTUPINFOW startup{}; startup.cb = sizeof(startup); PROCESS_INFORMATION process{};
         windows::require_win(CreateProcessW(executable.c_str(), command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &startup, &process), "CreateProcess fixture");
         process_ = c_handle(process.hProcess); c_handle thread(process.hThread); pid_ = process.dwProcessId;
