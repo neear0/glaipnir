@@ -5,6 +5,9 @@ set(CMAKE_VS_GLOBALS "VcpkgEnabled=false")
 if(NOT WIN32)
     message(FATAL_ERROR "glAIpnir requires Windows.")
 endif()
+if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+    message(FATAL_ERROR "glAIpnir requires a 64-bit build.")
+endif()
 
 include(FetchContent)
 FetchContent_Declare(json
@@ -24,11 +27,17 @@ add_library(harness STATIC
     glAIpnir/src/core/util.cpp
     glAIpnir/src/storage/store.cpp
     glAIpnir/src/windows/tools.cpp
+    glAIpnir/src/windows/analysis.cpp
+    glAIpnir/src/windows/process.cpp
+    glAIpnir/src/windows/service.cpp
+    glAIpnir/src/windows/registry.cpp
+    glAIpnir/src/windows/token.cpp
+    glAIpnir/src/windows/security.cpp
     glAIpnir/src/ai/model.cpp
     glAIpnir/src/ai/http.cpp
     glAIpnir/src/cli/cli.cpp)
 target_include_directories(harness PUBLIC glAIpnir/include)
-target_link_libraries(harness PUBLIC nlohmann_json::nlohmann_json PRIVATE sqlite3 winhttp bcrypt)
+target_link_libraries(harness PUBLIC nlohmann_json::nlohmann_json PRIVATE sqlite3 winhttp bcrypt advapi32 psapi)
 target_compile_features(harness PUBLIC cxx_std_20)
 target_compile_definitions(harness PUBLIC UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
 set_target_properties(harness PROPERTIES CXX_EXTENSIONS NO)

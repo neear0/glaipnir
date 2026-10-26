@@ -1,5 +1,6 @@
 #include "harness/windows/tools.hpp"
 #include "harness/core/util.hpp"
+#include "harness/windows/analysis.hpp"
 #include <array>
 #include <chrono>
 #include <fstream>
@@ -21,23 +22,43 @@ harness::json_t harness::windows::tool_definitions() {
         {"parameters", schema({{"executable", text}, {"arguments", {{"type", "array"}, {"items", text}}}, {"working_directory", text}}, {"executable", "arguments"})}});
     result.push_back({{"name", "shell_execute"}, {"description", "Execute a Windows shell command with bounded output and runtime."},
         {"parameters", schema({{"command", text}, {"shell", {{"type", "string"}, {"enum", {"powershell", "cmd"}}}}, {"working_directory", text}}, {"command"})}});
+    for (const auto& definition : analysis_definitions()) result.push_back(definition);
     return result;
 }
+static void validate_value(const harness::json_t& value, const harness::json_t& rule, const std::string& path) {
+    const auto type = rule.at("type").get<std::string>();
+    if ((type == "object" && !value.is_object()) || (type == "string" && !value.is_string()) ||
+        (type == "array" && !value.is_array()) || (type == "boolean" && !value.is_boolean()) ||
+        (type == "integer" && !value.is_number_integer())) throw std::runtime_error("Invalid argument type: " + path);
+    if (type == "string" && value.get_ref<const std::string&>().find('\0') != std::string::npos) throw std::runtime_error("Embedded NUL in argument: " + path);
+    if (type == "integer") {
+        if (!value.is_number_unsigned() && value.get<std::int64_t>() < 0) throw std::runtime_error("Negative argument: " + path);
+        auto number = value.get<std::uint64_t>();
+        if (number < rule.value("minimum", std::uint64_t{0}) || number > rule.value("maximum", (std::numeric_limits<std::uint64_t>::max)())) throw std::runtime_error("Argument outside valid range: " + path);
+    }
+    if (rule.contains("enum") && std::find(rule.at("enum").begin(), rule.at("enum").end(), value) == rule.at("enum").end()) throw std::runtime_error("Invalid argument value: " + path);
+    if (type == "array") for (const auto& item : value) validate_value(item, rule.at("items"), path + "[]");
+    if (type == "object") {
+        for (const auto& required : rule.at("required")) if (!value.contains(required.get<std::string>())) throw std::runtime_error("Missing argument: " + path + "." + required.get<std::string>());
+        for (const auto& [key, item] : value.items()) {
+            if (!rule.at("properties").contains(key)) throw std::runtime_error("Unknown argument: " + path + "." + key);
+            validate_value(item, rule.at("properties").at(key), path + "." + key);
+        }
+    }
+}
 static void validate(const std::string& name, const harness::json_t& arguments) {
-    if (!arguments.is_object()) throw std::runtime_error("Tool arguments must be an object");
     for (const auto& definition : harness::windows::tool_definitions()) if (definition.at("name") == name) {
-        const auto& parameters = definition.at("parameters");
-        for (const auto& required : parameters.at("required")) if (!arguments.contains(required.get<std::string>()))
-            throw std::runtime_error("Missing argument: " + required.get<std::string>());
-        for (const auto& [key, value] : arguments.items()) {
-            if (!parameters.at("properties").contains(key)) throw std::runtime_error("Unknown argument: " + key);
-            const auto& property = parameters.at("properties").at(key);
-            const auto type = property.at("type").get<std::string>();
-            if ((type == "string" && !value.is_string()) || (type == "array" && !value.is_array()) ||
-                (type == "integer" && (!value.is_number_integer() || value.get<std::int64_t>() < 0))) throw std::runtime_error("Invalid argument type: " + key);
-            if (type == "array") for (const auto& item : value) if (!item.is_string()) throw std::runtime_error("Arguments must be strings");
-            if (property.contains("enum") && std::find(property.at("enum").begin(), property.at("enum").end(), value) == property.at("enum").end())
-                throw std::runtime_error("Invalid argument value: " + key);
+        validate_value(arguments, definition.at("parameters"), "arguments");
+        if (arguments.contains("creation_time") && !arguments.contains("pid")) throw std::runtime_error("creation_time requires pid");
+        if (arguments.contains("token_creation_time") && !arguments.contains("token_pid")) throw std::runtime_error("token_creation_time requires token_pid");
+        if (arguments.contains("target")) {
+            const auto& target = arguments.at("target"); const auto kind = target.at("kind").get<std::string>();
+            const auto locator = kind == "file" ? "path" : kind == "process" ? "pid" : kind == "service" ? "name" : "key";
+            if (!target.contains(locator)) throw std::runtime_error("Missing target locator: " + std::string(locator));
+            for (const auto& [key, ignored] : target.items()) {
+                (void)ignored;
+                if (key != "kind" && key != locator && !(kind == "process" && key == "creation_time") && !(kind == "registry" && key == "view")) throw std::runtime_error("Argument does not apply to target kind: " + key);
+            }
         }
         return;
     }
@@ -175,6 +196,12 @@ harness::json_t harness::windows::execute_tool(const std::string& name, const ha
     try {
         validate(name, arguments);
         if (cancelled.load()) return {{"ok", false}, {"cancelled", true}};
+        if (name.starts_with("service_") || name.starts_with("registry_") || name.starts_with("security_") || name == "token_info" ||
+            name == "process_list" || name == "process_info" || name == "process_modules" || name == "process_threads") {
+            auto result = execute_analysis(name, arguments, default_directory, limits, cancelled);
+            if (dump_json(result).size() > limits.output_limit) throw c_windows_error("Analysis result exceeds output_limit", ERROR_INSUFFICIENT_BUFFER);
+            return result;
+        }
         const auto directory = arguments.contains("working_directory") ? resolve_path(arguments.at("working_directory"), default_directory) : default_directory;
         if (name == "shell_execute" || name == "process_launch") {
             if (name == "process_launch") return run_process(resolve_path(arguments.at("executable"), directory), arguments.at("arguments").get<std::vector<std::string>>(), directory, limits, cancelled);
@@ -199,5 +226,6 @@ harness::json_t harness::windows::execute_tool(const std::string& name, const ha
         auto bytes = read_bytes(path, offset, length);
         return {{"ok", true}, {"offset", offset}, {"bytes_read", bytes.size()}, {"text", bytes}, {"hex", hex_bytes(bytes)},
             {"truncated", requested > length || (offset < std::filesystem::file_size(path) && bytes.size() < std::filesystem::file_size(path) - offset)}};
-    } catch (const std::exception& error) { return {{"ok", false}, {"error", error.what()}, {"cancelled", cancelled.load()}}; }
+    } catch (const c_windows_error& error) { auto result = error.result(); result["cancelled"] = cancelled.load(); return result; }
+    catch (const std::exception& error) { return {{"ok", false}, {"error", error.what()}, {"cancelled", cancelled.load()}}; }
 }

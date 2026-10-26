@@ -14,6 +14,8 @@ struct limits_t {
     int max_turns = 32;
 };
 enum class task_state_t { queued, running, succeeded, failed, cancelled, interrupted };
+enum class target_kind_t { file, process, service, registry, machine };
+struct research_target_t { target_kind_t kind = target_kind_t::file; json_t identity = json_t::object(); };
 struct observation_t { std::string task_id; json_t data; };
 struct hypothesis_t { std::string text; std::vector<std::string> observation_ids; };
 struct experiment_t { std::string task_id; json_t parameters; };
