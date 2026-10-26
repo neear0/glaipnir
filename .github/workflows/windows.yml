@@ -16,3 +16,9 @@ jobs:
         run: cmake --build --preset ${{ matrix.preset }}
       - name: Test
         run: ctest --preset ${{ matrix.preset }}
+      - name: Check install package
+        run: |
+          cmake --install out/build/windows-x64 --config ${{ matrix.preset == 'debug' && 'Debug' || 'Release' }} --prefix out/package
+          if ($LASTEXITCODE -ne 0) { throw 'Package installation failed' }
+          & ./out/package/bin/glAIpnir.exe --version
+          if ($LASTEXITCODE -ne 0) { throw 'Installed executable failed' }
