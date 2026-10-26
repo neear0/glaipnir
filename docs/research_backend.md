@@ -151,6 +151,8 @@ the executable and any preserved input hashes, reruns the case, and compares the
 expected signature. Optional `executable`, `working_directory`, and `timeout_ms`
 overrides support moving an export; an executable override must have the same
 hash. `reproduced` is a measured result, not a vulnerability classification.
+The worker starts in its task workspace, so an override can replace a session
+directory that no longer exists.
 
 Fuzz manifests use paths relative to their preserved input. Standalone debugger
 runs preserve explicit stdin and otherwise retain literal arguments; arbitrary
@@ -170,6 +172,11 @@ stdout/stderr, minidumps, and replay metadata. Campaigns additionally include
 copied seeds, case inputs, and a journal. Large tool responses are summarized
 while detailed files remain in evidence. The store indexes saved crash manifests
 even when a response's catalog is truncated.
+Summarized results reference `full_result.json` only after it has been saved.
+If the artifact budget or an I/O error prevents preserving the full response,
+the task fails with `evidence_incomplete:true` and an explicit error;
+`operation_ok` retains the underlying operation's status. Already saved files
+remain available as evidence.
 
 The existing global operation deadline applies to the whole worker invocation.
 Cancellation first requests cooperative cleanup; the controller terminates a
@@ -178,10 +185,15 @@ byte budget and cancellation. Artifact registration caps the task at 8192 files
 and 288 MiB including control files. On reopening an interrupted task, available
 files are registered without rerunning the target. Active worker identity is
 checked before recovery reads its files.
+Partial or malformed worker identity files and crash manifests remain registered
+as raw evidence, with their paths and errors in `evidence_warnings`. Valid crash records are still
+indexed, and the task becomes `interrupted`; reopening the store does not
+repeat execution or duplicate the recovered records.
 
 The test suites cover both architectures, step/context integrity, handled events,
 owned/attached process lifetimes, hash-checked replay, deterministic inputs,
-timeouts, cancellation, partial evidence, and complete CLI/export workflows.
+timeouts, cancellation, partial metadata recovery, replay after moving the
+original directory, response preservation failures, and complete CLI/export workflows.
 Provider tests exercise the research tool through all three HTTP adapters using
 local fixtures; no real model credentials or API calls are required.
 
