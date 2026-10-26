@@ -1,0 +1,31 @@
+{
+  "profiles": {
+    "openai": {
+      "provider": "openai",
+      "endpoint": "https://api.openai.com/v1/responses",
+      "model": "REPLACE_WITH_YOUR_TOOL_CAPABLE_MODEL",
+      "key_env": "OPENAI_API_KEY",
+      "max_output_tokens": 4096
+    },
+    "anthropic": {
+      "provider": "anthropic",
+      "endpoint": "https://api.anthropic.com/v1/messages",
+      "model": "REPLACE_WITH_YOUR_TOOL_CAPABLE_MODEL",
+      "key_env": "ANTHROPIC_API_KEY",
+      "max_output_tokens": 4096
+    },
+    "local": {
+      "provider": "ollama",
+      "endpoint": "http://localhost:11434/api/chat",
+      "model": "REPLACE_WITH_YOUR_INSTALLED_TOOL_CAPABLE_MODEL",
+      "key_env": "",
+      "max_output_tokens": 4096
+    }
+  },
+  "limits": {
+    "operation_timeout_ms": 60000,
+    "output_limit": 1048576,
+    "http_timeout_ms": 120000,
+    "max_turns": 32
+  }
+}

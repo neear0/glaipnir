@@ -1,0 +1,9 @@
+.vs/
+**/bin/
+**/obj/
+/build/
+/out/
+*.user
+.glaipnir/
+config.local.json
+CMakeUserPresets.json
