@@ -18,6 +18,7 @@ public:
     void update_task(const std::string& id, task_state_t state, const json_t& result = nullptr);
     json_t complete_task(const std::string& session_id, const std::string& task_id, task_state_t state, json_t result);
     artifact_t save_artifact(const std::string& session_id, const std::string& content);
+    std::filesystem::path task_workspace(const std::string& session_id, const std::string& task_id);
     json_t export_session(const std::string& session_id, const std::filesystem::path& destination) const;
     void recover();
 private:

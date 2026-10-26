@@ -1,6 +1,7 @@
 #include "harness/core/runtime.hpp"
 #include "harness/windows/tools.hpp"
 #include "harness/windows/analysis.hpp"
+#include "harness/research/backend.hpp"
 #include <chrono>
 
 harness::c_task_scheduler::c_task_scheduler() : worker_([this](std::stop_token stop) {
@@ -54,7 +55,7 @@ harness::json_t harness::c_runtime::dispatch(const std::string& session_id, cons
                 value[time_key] = target.at("creation_time");
             }
         };
-        if (tool == "process_info" || tool == "process_modules" || tool == "process_threads" || tool == "token_info") pin(resolved, "pid", "creation_time");
+        if (tool == "process_info" || tool == "process_modules" || tool == "process_threads" || tool == "token_info" || tool == "debug_attach" || tool == "dump_process") pin(resolved, "pid", "creation_time");
         if (tool == "security_descriptor" || tool == "security_access_check") {
             if (resolved.contains("target") && resolved.at("target").is_object() && resolved.at("target").contains("kind") && resolved.at("target").at("kind") == "process") pin(resolved["target"], "pid", "creation_time");
             pin(resolved, "token_pid", "token_creation_time");
@@ -76,8 +77,9 @@ harness::json_t harness::c_runtime::dispatch(const std::string& session_id, cons
                 std::this_thread::sleep_for(std::chrono::milliseconds(5));
             }
         });
+        auto workspace = research::is_research_tool(tool) ? store_.task_workspace(session_id, id) : std::filesystem::path{};
         auto result = identity_conflict ? windows::c_windows_error("Supplied process identity differs from the bound session", ERROR_INVALID_PARAMETER).result() :
-            windows::execute_tool(tool, arguments, directory, limits_, operation_cancelled);
+            windows::execute_tool(tool, arguments, directory, limits_, operation_cancelled, workspace);
         watcher.request_stop(); watcher.join();
         if (cancelled_.load()) { result["cancelled"] = true; result["ok"] = false; }
         if (timed_out.load()) { result["timed_out"] = true; result["cancelled"] = false; result["ok"] = false; }

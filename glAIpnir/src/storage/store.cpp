@@ -3,6 +3,7 @@
 #include <sqlite3.h>
 #include <memory>
 #include <array>
+#include <algorithm>
 
 static std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> prepare(sqlite3* database, const char* sql) {
     sqlite3_stmt* statement{};
@@ -114,12 +115,41 @@ harness::json_t harness::storage::c_evidence_store::complete_task(const std::str
     harness::task_state_t state, harness::json_t result) {
     execute("BEGIN IMMEDIATE");
     try {
+        const auto workspace = root_ / "artifacts" / widen(session_id) / widen(task_id);
+        if (std::filesystem::is_directory(workspace)) {
+            result["artifact_root"] = path_text(std::filesystem::relative(workspace, root_));
+            std::vector<std::filesystem::path> files; std::uintmax_t total = 0;
+            for (const auto& entry : std::filesystem::recursive_directory_iterator(workspace)) {
+                if (entry.is_symlink() || (GetFileAttributesW(entry.path().c_str()) & FILE_ATTRIBUTE_REPARSE_POINT)) throw std::runtime_error("Reparse point in research artifacts");
+                if (entry.is_regular_file()) { if (files.size() >= 8192) throw std::runtime_error("Research artifact count exceeded"); files.push_back(entry.path()); }
+            }
+            std::sort(files.begin(), files.end());
+            for (const auto& file : files) {
+                const auto size = std::filesystem::file_size(file); total += size;
+                if (total > 288 * 1024 * 1024) throw std::runtime_error("Research artifact byte limit exceeded");
+                append(session_id, "artifact", {{"path", path_text(std::filesystem::relative(file, root_))}, {"sha256", sha256(file)}, {"size", size}, {"task_id", task_id}, {"kind", "research"}});
+            }
+            result["evidence_file_count"] = files.size(); result["evidence_bytes"] = total;
+            for (const auto& file : files) if (file.filename() == L"crash.json") {
+                auto record = read_json(file);
+                if (!record.contains("signature") || !record.contains("exception_code")) continue;
+                const auto relative = path_text(std::filesystem::relative(file, workspace));
+                for (const auto& summary : result.value("crashes", json_t::array())) if (summary.value("manifest", "") == relative) record.update(summary);
+                record["task_id"] = task_id; record["artifact_root"] = result.at("artifact_root"); record["manifest"] = relative; record["verified_vulnerability"] = false;
+                append(session_id, "crash", record);
+            }
+        }
         const auto artifact = save_artifact(session_id, dump_json(result, 2));
         result["task_id"] = task_id; result["artifact"] = artifact.path;
         append(session_id, "observation", {{"task_id", task_id}, {"data", result}});
         update_task(task_id, state, result);
         execute("COMMIT"); return result;
     } catch (...) { sqlite3_exec(database_, "ROLLBACK", nullptr, nullptr, nullptr); throw; }
+}
+std::filesystem::path harness::storage::c_evidence_store::task_workspace(const std::string& session_id, const std::string& task_id) {
+    session(session_id);
+    for (const auto& value : {session_id, task_id}) if (value.empty() || value == "." || value == ".." || value.find_first_of("/\\:") != std::string::npos) throw std::runtime_error("Invalid workspace identifier");
+    auto path = root_ / "artifacts" / widen(session_id) / widen(task_id); std::filesystem::create_directories(path); return path;
 }
 harness::artifact_t harness::storage::c_evidence_store::save_artifact(const std::string& session_id, const std::string& content) {
     session(session_id);
@@ -131,6 +161,29 @@ harness::artifact_t harness::storage::c_evidence_store::save_artifact(const std:
     return artifact;
 }
 void harness::storage::c_evidence_store::recover() {
+    auto pending = prepare(database_, "SELECT id,session_id FROM records WHERE kind='task' AND json_extract(data,'$.state') IN ('queued','running')");
+    std::vector<std::pair<std::string, std::string>> interrupted;
+    while (sqlite3_step(pending.get()) == SQLITE_ROW) interrupted.emplace_back(column(pending.get(), 0), column(pending.get(), 1));
+    pending.reset();
+    for (const auto& [task_id, session_id] : interrupted) {
+        const auto workspace = root_ / "artifacts" / widen(session_id) / widen(task_id);
+        if (!std::filesystem::is_directory(workspace)) continue;
+        if (std::filesystem::is_regular_file(workspace / "worker.json")) {
+            const auto identity = read_json(workspace / "worker.json");
+            c_handle process(OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, identity.at("pid").get<DWORD>()));
+            if (process.valid() && WaitForSingleObject(process.get(), 0) == WAIT_TIMEOUT &&
+                windows::process_creation_time(process.get()) == identity.at("creation_time").get<std::string>() && WaitForSingleObject(process.get(), 3000) == WAIT_TIMEOUT)
+                throw std::runtime_error("Previous research worker is still exiting; retry opening the store");
+        }
+        json_t result = {{"ok", false}, {"outcome", "interrupted"}, {"error", "Research worker interrupted; execution was not repeated"}, {"crashes", json_t::array()}};
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(workspace)) {
+            if (entry.is_symlink() || (GetFileAttributesW(entry.path().c_str()) & FILE_ATTRIBUTE_REPARSE_POINT)) throw std::runtime_error("Reparse point in interrupted research workspace");
+            if (entry.is_regular_file() && entry.path().filename() == L"crash.json") {
+            try { auto crash = read_json(entry.path()); if (crash.contains("signature") && crash.contains("exception_code")) result["crashes"].push_back(crash); } catch (const std::exception&) {}
+            }
+        }
+        complete_task(session_id, task_id, task_state_t::interrupted, std::move(result));
+    }
     execute("UPDATE records SET data=json_set(data,'$.state','interrupted','$.result',json('{\"ok\":false,\"error\":\"Process interrupted; execution was not repeated\"}')) "
         "WHERE kind='task' AND json_extract(data,'$.state') IN ('queued','running')");
     for (const auto& entry : list_sessions()) {

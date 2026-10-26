@@ -19,6 +19,8 @@ static void help() {
         "  session create --type service NAME\n  session create --type registry KEY [--view native|32|64]\n"
         "  session create --type machine\n"
         "  tools list\n  tool run ID TOOL JSON|@FILE\n  investigate ID PROFILE GOAL\n  shell\n"
+        "  debug run|attach ID JSON|@FILE\n  fuzz run ID JSON|@FILE\n  crash replay ID JSON|@FILE\n"
+        "  crash list ID\n  crash show ID RECORD_ID\n"
         "Interactive commands use the same syntax. Quote arguments with double quotes.\n"
         "Use @FILE for JSON containing quotes. Type exit to leave the shell.\n";
 }
@@ -57,6 +59,16 @@ static harness::json_t command(const std::vector<std::string>& args, harness::c_
     }
     if (args.size() == 3 && args[0] == "session" && args[1] == "show") return {{"session", store.session(args[2])}, {"records", store.records(args[2])}};
     if (args.size() == 4 && args[0] == "session" && args[1] == "export") return store.export_session(args[2], harness::widen(args[3]));
+    if (args.size() == 3 && args[0] == "crash" && args[1] == "list") { store.session(args[2]); return store.records(args[2], "crash"); }
+    if (args.size() == 4 && args[0] == "crash" && args[1] == "show") {
+        store.session(args[2]); for (const auto& record : store.records(args[2], "crash")) if (record.at("id") == args[3]) return record;
+        throw std::runtime_error("Unknown crash record");
+    }
+    if (args.size() == 4 && ((args[0] == "debug" && (args[1] == "run" || args[1] == "attach")) || (args[0] == "fuzz" && args[1] == "run") || (args[0] == "crash" && args[1] == "replay"))) {
+        auto input = args[3].starts_with('@') ? harness::read_json(harness::widen(args[3].substr(1))) : harness::json_t::parse(args[3]);
+        const auto tool = args[0] == "debug" ? "debug_" + args[1] : args[0] == "fuzz" ? "fuzz_run" : "crash_replay";
+        return runtime.dispatch(args[2], tool, input);
+    }
     if (args.size() == 5 && args[0] == "tool" && args[1] == "run") {
         auto input = args[4].starts_with('@') ? harness::read_json(harness::widen(args[4].substr(1))) : harness::json_t::parse(args[4]);
         return runtime.dispatch(args[2], args[3], input);
