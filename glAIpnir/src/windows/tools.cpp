@@ -1,6 +1,7 @@
 #include "harness/windows/tools.hpp"
 #include "harness/core/util.hpp"
 #include "harness/windows/analysis.hpp"
+#include "harness/research/backend.hpp"
 #include <array>
 #include <chrono>
 #include <fstream>
@@ -23,6 +24,7 @@ harness::json_t harness::windows::tool_definitions() {
     result.push_back({{"name", "shell_execute"}, {"description", "Execute a Windows shell command with bounded output and runtime."},
         {"parameters", schema({{"command", text}, {"shell", {{"type", "string"}, {"enum", {"powershell", "cmd"}}}}, {"working_directory", text}}, {"command"})}});
     for (const auto& definition : analysis_definitions()) result.push_back(definition);
+    for (const auto& definition : research::tool_definitions()) result.push_back(definition);
     return result;
 }
 static void validate_value(const harness::json_t& value, const harness::json_t& rule, const std::string& path) {
@@ -192,10 +194,14 @@ static harness::json_t run_process(const std::filesystem::path& executable, cons
         {"elapsed_ms", std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count()}};
 }
 harness::json_t harness::windows::execute_tool(const std::string& name, const harness::json_t& arguments,
-    const std::filesystem::path& default_directory, const harness::limits_t& limits, const std::atomic_bool& cancelled) {
+    const std::filesystem::path& default_directory, const harness::limits_t& limits, const std::atomic_bool& cancelled, const std::filesystem::path& workspace) {
     try {
         validate(name, arguments);
         if (cancelled.load()) return {{"ok", false}, {"cancelled", true}};
+        if (research::is_research_tool(name)) {
+            const auto directory = arguments.contains("working_directory") && name != "crash_replay" ? resolve_path(arguments.at("working_directory"), default_directory) : default_directory;
+            return research::execute(name, arguments, directory, limits, cancelled, workspace);
+        }
         if (name.starts_with("service_") || name.starts_with("registry_") || name.starts_with("security_") || name == "token_info" ||
             name == "process_list" || name == "process_info" || name == "process_modules" || name == "process_threads") {
             auto result = execute_analysis(name, arguments, default_directory, limits, cancelled);

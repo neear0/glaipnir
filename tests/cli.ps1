@@ -46,5 +46,5 @@ foreach ($target in $typedTargets) {
     if ($LASTEXITCODE -ne 0) { throw 'Typed CLI export failed' }
 }
 $version = & $Harness --version
-if ($version -ne '0.2.0') { throw 'CLI version mismatch' }
+if ($version -ne '0.3.0') { throw 'CLI version mismatch' }
 Write-Output 'PASS CLI typed file, process, service, registry and machine sessions'

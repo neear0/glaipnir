@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(glaipnir VERSION 0.2.0 LANGUAGES C CXX)
+project(glaipnir VERSION 0.3.0 LANGUAGES C CXX)
 set(CMAKE_VS_GLOBALS "VcpkgEnabled=false")
 
 if(NOT WIN32)
@@ -33,18 +33,42 @@ add_library(harness STATIC
     glAIpnir/src/windows/registry.cpp
     glAIpnir/src/windows/token.cpp
     glAIpnir/src/windows/security.cpp
+    glAIpnir/src/research/backend.cpp
+    glAIpnir/src/research/transport.cpp
+    glAIpnir/src/research/debugger.cpp
+    glAIpnir/src/research/crash.cpp
     glAIpnir/src/ai/model.cpp
     glAIpnir/src/ai/http.cpp
     glAIpnir/src/cli/cli.cpp)
 target_include_directories(harness PUBLIC glAIpnir/include)
-target_link_libraries(harness PUBLIC nlohmann_json::nlohmann_json PRIVATE sqlite3 winhttp bcrypt advapi32 psapi)
+target_link_libraries(harness PUBLIC nlohmann_json::nlohmann_json PRIVATE sqlite3 winhttp bcrypt advapi32 psapi dbghelp)
 target_compile_features(harness PUBLIC cxx_std_20)
 target_compile_definitions(harness PUBLIC UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX HARNESS_VERSION="${PROJECT_VERSION}")
 set_target_properties(harness PROPERTIES CXX_EXTENSIONS NO)
 add_executable(glaipnir glAIpnir/src/main.cpp)
+add_executable(glaipnir_worker glAIpnir/src/research/worker_main.cpp)
+include(ExternalProject)
+set(wow64_binary_dir "${CMAKE_BINARY_DIR}/wow64")
+ExternalProject_Add(wow64_tools
+    BUILD_ALWAYS TRUE
+    SOURCE_DIR ${CMAKE_SOURCE_DIR}/cmake/wow64
+    BINARY_DIR ${wow64_binary_dir}
+    CMAKE_GENERATOR "Visual Studio 17 2022"
+    CMAKE_GENERATOR_PLATFORM Win32
+    CMAKE_ARGS -DHARNESS_VERSION=${PROJECT_VERSION}
+    BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --config $<CONFIG> -- /m:1 /v:minimal
+    INSTALL_COMMAND "")
+add_custom_target(stage_wow64_helper
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${wow64_binary_dir}/$<CONFIG>/glAIpnir-dump32.exe ${CMAKE_BINARY_DIR}/$<CONFIG>/glAIpnir-dump32.exe
+    DEPENDS wow64_tools)
+add_dependencies(glaipnir_worker stage_wow64_helper)
+target_link_libraries(glaipnir_worker PRIVATE harness)
+set_target_properties(glaipnir_worker PROPERTIES OUTPUT_NAME glAIpnir-worker)
+add_dependencies(glaipnir glaipnir_worker)
 target_link_libraries(glaipnir PRIVATE harness)
 set_target_properties(glaipnir PROPERTIES OUTPUT_NAME glAIpnir)
-install(TARGETS glaipnir RUNTIME DESTINATION bin)
+install(TARGETS glaipnir glaipnir_worker RUNTIME DESTINATION bin)
+install(PROGRAMS ${wow64_binary_dir}/$<CONFIG>/glAIpnir-dump32.exe DESTINATION bin)
 install(FILES README.md THIRD_PARTY_NOTICES.md DESTINATION .)
 install(FILES examples/config.json DESTINATION examples)
 install(FILES glAIpnir/coms.md DESTINATION glAIpnir)
@@ -56,12 +80,14 @@ function(harness_warnings target)
 endfunction()
 harness_warnings(harness)
 harness_warnings(glaipnir)
+harness_warnings(glaipnir_worker)
 include(CTest)
 if(BUILD_TESTING)
     add_executable(harness_fixture tests/fixture.cpp)
     target_compile_features(harness_fixture PRIVATE cxx_std_20)
     add_executable(harness_tests tests/tests.cpp)
     target_link_libraries(harness_tests PRIVATE harness ws2_32)
+    add_dependencies(harness_tests glaipnir_worker)
     harness_warnings(harness_tests)
     add_test(NAME harness_tests COMMAND harness_tests $<TARGET_FILE:harness_fixture>)
     set_tests_properties(harness_tests PROPERTIES TIMEOUT 90)
@@ -76,5 +102,6 @@ if(BUILD_TESTING)
         -Harness $<TARGET_FILE:glaipnir> -Fixture $<TARGET_FILE:harness_fixture>
         -Root ${CMAKE_CURRENT_BINARY_DIR}/cli-test-data/$<CONFIG>)
     set_tests_properties(cli_workflow PROPERTIES TIMEOUT 60)
+
 endif()
 set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT glaipnir)
