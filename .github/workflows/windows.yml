@@ -10,6 +10,8 @@ jobs:
         preset: [debug, release]
     steps:
       - uses: actions/checkout@v4
+      - name: Configure WOW64 fixture
+        run: cmake -S tests/targets -B out/build/research-x86 -G "Visual Studio 17 2022" -A Win32
       - name: Configure
         run: cmake --preset windows-x64
       - name: Build
@@ -22,3 +24,5 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Package installation failed' }
           & ./out/package/bin/glAIpnir.exe --version
           if ($LASTEXITCODE -ne 0) { throw 'Installed executable failed' }
+          & ./out/package/bin/glAIpnir-worker.exe --version
+          if ($LASTEXITCODE -ne 0) { throw 'Installed worker failed' }

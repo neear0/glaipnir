@@ -1,10 +1,11 @@
-# glAIpnir 0.2
+# glAIpnir 0.3
 
 A Windows-native C++20 research harness with persistent sessions, native tools,
 and model-driven task dispatch. Research direction and conventions are in
-[coms.md](glAIpnir/coms.md). Version 0.2 adds process, service, registry, token,
-and security descriptor inspection to the native runtime. Debugging, fuzzing,
-crash triage, kernel integration, and AD assessment come later.
+[coms.md](glAIpnir/coms.md). Version 0.3 adds bounded user-mode debugging,
+deterministic mutation campaigns, minidumps, and reproducible case replay to the
+existing Windows analysis tools. The AI research loop, kernel integration, and
+AD assessment remain later milestones.
 
 ## Build
 
@@ -20,7 +21,13 @@ cmake --build --preset release
 ctest --preset release
 ```
 
-The executable is `out/build/windows-x64/Release/glAIpnir.exe`.
+To include WOW64 regression tests, configure their standalone fixture before the
+main preset: `cmake -S tests/targets -B out/build/research-x86 -G "Visual Studio 17 2022" -A Win32`.
+The main build then builds that fixture and registers the x86 research suite.
+
+The executable is `out/build/windows-x64/Release/glAIpnir.exe`. Keep
+`glAIpnir-worker.exe` and `glAIpnir-dump32.exe` beside it. CMake builds and installs
+both companions, including the required Win32 helper with the VS x86 toolchain.
 The first configure downloads pinned source archives with SHA-256 verification:
 nlohmann/json 3.12.0 (MIT) and SQLite 3.54.1 (public domain). Both are statically
 linked into the application. Windows supplies WinHTTP and CNG; no model SDK,
@@ -121,6 +128,30 @@ its previous state on exit, and fails clearly when that privilege is unavailable
 It does not elevate the process. Session and task evidence record the effective
 user, integrity, elevation, and requested/enabled debug privilege state.
 
+## Research backend
+
+The research tools are `debug_run`, `debug_attach`, `fuzz_run`, `dump_process`,
+`crash_info`, and `crash_replay`. They use isolated worker processes and save
+binary evidence alongside observations. The debugger supports native x64 and
+WOW64 x86 programs, one-shot module-relative breakpoints, bounded instruction
+stepping, register/stack/memory snapshots, and first-/second-chance event history.
+
+The command shortcuts use the same JSON schemas as `tool run`:
+
+```text
+debug run ID JSON|@FILE
+debug attach ID JSON|@FILE
+fuzz run ID JSON|@FILE
+crash list ID
+crash show ID RECORD_ID
+crash replay ID JSON|@FILE
+```
+
+[Research workflows](docs/research_backend.md) documents arguments, budgets,
+artifact layout, replay, and process ownership. Session exports now include
+minidumps, raw output, preserved inputs, case journals, and replay manifests,
+each registered with its SHA-256. Existing 0.1/0.2 sessions remain compatible.
+
 Available tools:
 
 | Tool | Arguments |
@@ -186,3 +217,6 @@ decoding, and legacy compatibility without requiring elevation. A sandbox must
 allow those temporary registry writes. Installed services are never modified.
 Windows CI builds and tests Debug and Release and checks the install package.
 Live provider smoke checks are optional and separate from the default suite.
+The research suites cover native x64 and WOW64 fixtures, instruction stepping,
+attachment/detachment, minidump context integrity, reproducible mutations,
+replay, process cleanup, interrupted evidence recovery, and the research CLI.
