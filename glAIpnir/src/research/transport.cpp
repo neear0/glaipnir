@@ -34,8 +34,9 @@ harness::json_t harness::research::execute(const std::string& name, const harnes
     auto command = quote_argument(worker.wstring()) + L" " + quote_argument(request_path.wstring()) + L" " + quote_argument(response_path.wstring()) + L" " +
         std::to_wstring(reinterpret_cast<std::uintptr_t>(cancel_event.get()));
     PROCESS_INFORMATION process{};
+    // Target paths use the directory in request.json; the worker only needs its existing workspace.
     BOOL launched = CreateProcessW(worker.c_str(), command.data(), nullptr, nullptr, TRUE, CREATE_SUSPENDED | CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT,
-        nullptr, directory.c_str(), &startup.StartupInfo, &process);
+        nullptr, workspace.c_str(), &startup.StartupInfo, &process);
     const auto error = GetLastError(); DeleteProcThreadAttributeList(startup.lpAttributeList);
     if (!launched) throw windows::c_windows_error("Launch research worker", error);
     c_handle process_handle(process.hProcess), thread_handle(process.hThread);

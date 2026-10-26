@@ -64,6 +64,23 @@ int wmain(int argc, wchar_t** argv) {
         harness::tests::check(repeated.at("crashes").front().at("signature") == crash.at("signature"), "stable module-relative crash signature");
         harness::tests::check(!store.records(session, "crash").empty(), "crash catalog persisted");
     });
+    test("exported replay works after the original directory moves", [&] {
+        const auto original = root / L"original-target", relocated = root / L"relocated-target";
+        std::filesystem::create_directories(original);
+        const auto original_executable = original / fixture.filename(); std::filesystem::copy_file(fixture, original_executable);
+        const auto id = runtime.create_session(original_executable);
+        auto collected = runtime.dispatch(id, "debug_run", {{"executable", harness::path_text(original_executable)}, {"arguments", {"crash"}}, {"entry_breakpoint", false}});
+        harness::tests::check(collected.at("ok") == true && collected.at("crashes").size() == 1, "collect relocatable evidence");
+        const auto destination = root / L"moved-export"; store.export_session(id, destination);
+        harness::tests::check(original.is_absolute() && relocated.is_absolute() && original.parent_path() == root && relocated.parent_path() == root,
+            "move is contained within the test workspace");
+        std::filesystem::rename(original, relocated);
+        const auto manifest = destination / harness::widen(collected.at("artifact_root")) / harness::widen(collected.at("crashes").front().at("reproducer"));
+        auto replayed = runtime.dispatch(id, "crash_replay", {{"manifest", harness::path_text(manifest)},
+            {"executable", harness::path_text(relocated / fixture.filename())}, {"working_directory", harness::path_text(relocated)}});
+        harness::tests::check(replayed.at("ok") == true && replayed.at("reproduced") == true && !std::filesystem::exists(original),
+            "replay uses preserved evidence and explicit overrides despite the stale session directory: " + harness::dump_json(replayed));
+    });
     test("attachment detaches and live minidumps are not crash reports", [&] {
         harness::tests::c_process_fixture process(fixture);
         auto attached = execute("debug_attach", {{"pid", process.pid()}, {"monitor_ms", 150}});
