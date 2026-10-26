@@ -135,6 +135,50 @@ int wmain(int argc, wchar_t** argv) {
         harness::storage::c_evidence_store recovered(recovery_root);
         harness::tests::check(recovered.records(id, "task").front().at("data").at("state") == "interrupted" && recovered.records(id, "crash").size() == 1 && recovered.records(id, "artifact").size() == 3, "interrupted evidence imported without rerunning target");
     });
+    test("partial manifests survive recovery, export and repeated reopening", [&] {
+        const auto location = root / L"partial-manifests"; std::string id, task;
+        {
+            harness::storage::c_evidence_store initial(location); id = initial.create_session(fixture, harness::json_t::object());
+            task = initial.append(id, "task", {{"state", "running"}, {"tool", "debug_run"}});
+            const auto workspace = initial.task_workspace(id, task);
+            for (const auto* directory : {"partial", "incomplete", "valid"}) std::filesystem::create_directories(workspace / directory);
+            harness::write_text(workspace / "input.bin", "preserved input");
+            harness::write_text(workspace / "worker.json", "{");
+            harness::write_text(workspace / "partial" / "crash.json", "{");
+            harness::write_text(workspace / "incomplete" / "crash.json", "{}");
+            harness::write_text(workspace / "valid" / "crash.json", harness::dump_json({{"signature", "valid-fixture"}, {"exception_code", EXCEPTION_ACCESS_VIOLATION}}));
+        }
+        {
+            harness::storage::c_evidence_store recovered(location);
+            const auto tasks = recovered.records(id, "task"); const auto& result = tasks.front().at("data").at("result");
+            harness::tests::check(tasks.front().at("data").at("state") == "interrupted" && result.at("evidence_warnings").size() == 3,
+                "partial metadata is reported without blocking recovery");
+            harness::tests::check(recovered.records(id, "crash").size() == 1 && result.at("crashes").size() == 1 && result.at("evidence_file_count") == 5,
+                "valid record and all raw files are preserved");
+            const auto destination = root / L"partial-export"; recovered.export_session(id, destination);
+            for (const auto& artifact : recovered.records(id, "artifact")) {
+                const auto& data = artifact.at("data");
+                harness::tests::check(harness::sha256(destination / harness::widen(data.at("path"))) == data.at("sha256").get<std::string>(), "partial evidence export integrity");
+            }
+        }
+        harness::storage::c_evidence_store reopened(location);
+        harness::tests::check(reopened.list_sessions().size() == 1 && reopened.records(id, "crash").size() == 1 && reopened.records(id, "artifact").size() == 6,
+            "reopening does not retry execution or duplicate evidence");
+    });
+    test("recovery still waits for a live worker with matching identity", [&] {
+        const auto location = root / L"live-worker";
+        harness::tests::c_process_fixture process(fixture);
+        {
+            harness::storage::c_evidence_store initial(location); auto id = initial.create_session(fixture, harness::json_t::object());
+            auto task = initial.append(id, "task", {{"state", "running"}, {"tool", "debug_run"}});
+            harness::write_text(initial.task_workspace(id, task) / "worker.json", harness::dump_json({{"pid", process.pid()},
+                {"creation_time", harness::windows::process_creation_time(process.handle())}}));
+        }
+        bool refused = false;
+        try { harness::storage::c_evidence_store recovery(location); }
+        catch (const std::exception& error) { refused = std::string(error.what()).find("Previous research worker is still exiting") != std::string::npos; }
+        harness::tests::check(refused && WaitForSingleObject(process.handle(), 0) == WAIT_TIMEOUT, "active identity prevents evidence recovery without terminating the worker");
+    });
     test("abrupt controller exit cleans workers and recovers partial evidence", [&] {
         const auto location = root / L"abrupt"; std::string id;
         { harness::storage::c_evidence_store initial(location); id = initial.create_session(fixture, harness::json_t::object()); }

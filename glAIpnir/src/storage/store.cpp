@@ -131,12 +131,21 @@ harness::json_t harness::storage::c_evidence_store::complete_task(const std::str
             }
             result["evidence_file_count"] = files.size(); result["evidence_bytes"] = total;
             for (const auto& file : files) if (file.filename() == L"crash.json") {
-                auto record = read_json(file);
-                if (!record.contains("signature") || !record.contains("exception_code")) continue;
                 const auto relative = path_text(std::filesystem::relative(file, workspace));
+                json_t record;
+                try {
+                    record = read_json(file);
+                    if (!record.is_object() || !record.contains("signature") || !record.at("signature").is_string() ||
+                        !record.contains("exception_code") || !record.at("exception_code").is_number_unsigned())
+                        throw std::runtime_error("Incomplete crash manifest");
+                } catch (const std::exception& error) {
+                    result["evidence_warnings"].push_back({{"path", relative}, {"error", error.what()}});
+                    continue;
+                }
                 for (const auto& summary : result.value("crashes", json_t::array())) if (summary.value("manifest", "") == relative) record.update(summary);
                 record["task_id"] = task_id; record["artifact_root"] = result.at("artifact_root"); record["manifest"] = relative; record["verified_vulnerability"] = false;
                 append(session_id, "crash", record);
+                if (state == task_state_t::interrupted) result["crashes"].push_back(record);
             }
         }
         const auto artifact = save_artifact(session_id, dump_json(result, 2));
@@ -168,18 +177,23 @@ void harness::storage::c_evidence_store::recover() {
     for (const auto& [task_id, session_id] : interrupted) {
         const auto workspace = root_ / "artifacts" / widen(session_id) / widen(task_id);
         if (!std::filesystem::is_directory(workspace)) continue;
-        if (std::filesystem::is_regular_file(workspace / "worker.json")) {
-            const auto identity = read_json(workspace / "worker.json");
-            c_handle process(OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, identity.at("pid").get<DWORD>()));
-            if (process.valid() && WaitForSingleObject(process.get(), 0) == WAIT_TIMEOUT &&
-                windows::process_creation_time(process.get()) == identity.at("creation_time").get<std::string>() && WaitForSingleObject(process.get(), 3000) == WAIT_TIMEOUT)
-                throw std::runtime_error("Previous research worker is still exiting; retry opening the store");
-        }
         json_t result = {{"ok", false}, {"outcome", "interrupted"}, {"error", "Research worker interrupted; execution was not repeated"}, {"crashes", json_t::array()}};
-        for (const auto& entry : std::filesystem::recursive_directory_iterator(workspace)) {
-            if (entry.is_symlink() || (GetFileAttributesW(entry.path().c_str()) & FILE_ATTRIBUTE_REPARSE_POINT)) throw std::runtime_error("Reparse point in interrupted research workspace");
-            if (entry.is_regular_file() && entry.path().filename() == L"crash.json") {
-            try { auto crash = read_json(entry.path()); if (crash.contains("signature") && crash.contains("exception_code")) result["crashes"].push_back(crash); } catch (const std::exception&) {}
+        if (std::filesystem::is_regular_file(workspace / "worker.json")) {
+            if (GetFileAttributesW((workspace / "worker.json").c_str()) & FILE_ATTRIBUTE_REPARSE_POINT) throw std::runtime_error("Reparse point in worker identity");
+            json_t identity;
+            try {
+                identity = read_json(workspace / "worker.json");
+                if (!identity.is_object() || !identity.contains("pid") || !identity.at("pid").is_number_unsigned() ||
+                    !identity.contains("creation_time") || !identity.at("creation_time").is_string()) throw std::runtime_error("Incomplete worker identity");
+            } catch (const std::exception& error) {
+                result["evidence_warnings"].push_back({{"path", "worker.json"}, {"error", error.what()}});
+                identity = nullptr;
+            }
+            if (!identity.is_null()) {
+                c_handle process(OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, identity.at("pid").get<DWORD>()));
+                if (process.valid() && WaitForSingleObject(process.get(), 0) == WAIT_TIMEOUT &&
+                    windows::process_creation_time(process.get()) == identity.at("creation_time").get<std::string>() && WaitForSingleObject(process.get(), 3000) == WAIT_TIMEOUT)
+                    throw std::runtime_error("Previous research worker is still exiting; retry opening the store");
             }
         }
         complete_task(session_id, task_id, task_state_t::interrupted, std::move(result));
