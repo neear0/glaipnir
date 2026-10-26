@@ -23,6 +23,26 @@ void harness::research::c_context::save(const std::filesystem::path& relative, c
     if (bytes.size() > remaining()) throw std::runtime_error("Research artifact byte budget exhausted");
     write_text(path(relative), bytes);
 }
+harness::json_t harness::research::summarize_result(harness::json_t result, const harness::research::c_context& context) {
+    if (dump_json(result).size() <= context.limits.output_limit) return result;
+    try { context.save("full_result.json", dump_json(result, 2)); }
+    catch (const std::exception& error) {
+        return {{"ok", false}, {"operation_ok", result.value("ok", false)}, {"output_truncated", true}, {"evidence_incomplete", true},
+            {"error", "Unable to preserve the full research result"}, {"evidence_error", error.what()}};
+    }
+    result.erase("events"); result.erase("snapshots"); result["output_truncated"] = true; result["full_result"] = "full_result.json";
+    if (result.contains("crashes")) for (auto& crash : result["crashes"]) crash.erase("snapshot");
+    if (dump_json(result).size() <= context.limits.output_limit) return result;
+    json_t summary = {{"ok", result.value("ok", false)}, {"output_truncated", true}, {"full_result", "full_result.json"}};
+    if (result.contains("crashes")) {
+        summary["crashes_truncated"] = true; summary["crashes_in_full_result"] = result.at("crashes").size();
+    }
+    for (const auto* key : {"outcome", "exit_code", "reproduced", "cancelled", "error", "stdout", "stderr"}) if (result.contains(key)) {
+        summary[key] = result.at(key);
+        if (dump_json(summary).size() > context.limits.output_limit) summary.erase(key);
+    }
+    return summary;
+}
 std::filesystem::path harness::research::resolve_path(const std::string& value, const std::filesystem::path& directory) {
     auto path = std::filesystem::path(widen(value)); return std::filesystem::absolute(path.is_absolute() ? path : directory / path).lexically_normal();
 }

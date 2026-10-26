@@ -17,15 +17,7 @@ int wmain(int argc, wchar_t** argv) {
         try { result = harness::research::worker_execute(request.at("tool"), args, context); }
         catch (const harness::windows::c_windows_error& error) { result = error.result(); }
         catch (const std::exception& error) { result = {{"ok", false}, {"error", error.what()}}; }
-        if (harness::dump_json(result).size() > context.limits.output_limit) {
-            try { context.save("full_result.json", harness::dump_json(result, 2)); } catch (const std::exception&) {}
-            result.erase("events"); result.erase("snapshots"); result["output_truncated"] = true; result["full_result"] = "full_result.json";
-            if (result.contains("crashes")) for (auto& crash : result["crashes"]) crash.erase("snapshot");
-            if (harness::dump_json(result).size() > context.limits.output_limit) {
-                const auto count = result.value("crashes", harness::json_t::array()).size(); result.erase("crashes");
-                result["crashes_truncated"] = true; result["crashes_in_full_result"] = count;
-            }
-        }
+        result = harness::research::summarize_result(std::move(result), context);
         harness::write_text(argv[2], harness::dump_json(result)); return 0;
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
 }

@@ -136,6 +136,27 @@ int wmain(int argc, wchar_t** argv) {
         auto limited = run({{"arguments", {"crash"}}, {"entry_breakpoint", false}, {"artifact_limit", 4096}});
         harness::tests::check(limited.at("ok") == false || limited.at("crashes").front().at("dump_result").at("ok") == false, "dump artifact limit is enforced");
     });
+    test("summaries reference saved details and report failed preservation", [&] {
+        harness::research::c_context context; context.directory = root; context.workspace = root / L"summary-success";
+        context.limits.output_limit = 512; context.artifact_limit = 16384; std::filesystem::create_directories(context.workspace);
+        const harness::json_t original = {{"ok", true}, {"outcome", "exit"}, {"events", {{{"text", std::string(4096, 'a')}}}},
+            {"stdout", std::string(1024, 'b')}, {"crashes", {{{"snapshot", {{"registers", "preserved"}}}}}}};
+        auto summary = harness::research::summarize_result(original, context);
+        harness::tests::check(summary.at("ok") == true && harness::dump_json(summary).size() <= context.limits.output_limit &&
+            harness::read_json(context.workspace / harness::widen(summary.at("full_result"))) == original, "bounded summary points to complete original evidence");
+        context.workspace = root / L"summary-failure"; context.artifact_limit = 1024; std::filesystem::create_directories(context.workspace);
+        summary = harness::research::summarize_result(original, context);
+        harness::tests::check(summary.at("ok") == false && summary.at("operation_ok") == true && summary.at("evidence_incomplete") == true &&
+            !summary.contains("full_result") && !summary.contains("crashes_in_full_result") && !summary.at("evidence_error").get<std::string>().empty(),
+            "preservation failure cannot advertise success or an unsaved evidence file");
+        harness::tests::check(!std::filesystem::exists(context.workspace / "full_result.json"), "budget failure leaves no advertised detail file");
+        const harness::json_t small = {{"ok", true}};
+        harness::tests::check(harness::research::summarize_result(small, context) == small, "small results need no extra artifact budget");
+        harness::c_runtime bounded_runtime(store, {{"limits", {{"output_limit", 512}}}}, cancelled);
+        auto result = bounded_runtime.dispatch(session, "debug_run", {{"executable", harness::path_text(fixture)}, {"arguments", {"normal"}}, {"artifact_limit", 32768}});
+        harness::tests::check(result.at("ok") == true && harness::read_json(evidence(result, result.at("full_result"))).at("outcome") == "exit" &&
+            harness::research::read_binary(evidence(result, "result.json"), 32768).size() <= 512, "worker applies bounded summary with a readable detail file");
+    });
     test("binary evidence survives export and interrupted task recovery", [&] {
         auto destination = root / L"export"; store.export_session(session, destination);
         for (const auto& artifact : store.records(session, "artifact")) {
