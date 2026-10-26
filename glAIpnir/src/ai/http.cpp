@@ -25,7 +25,8 @@ harness::json_t harness::ai::c_winhttp_transport::post(const std::string& endpoi
     const auto serialized = dump_json(body);
     for (int attempt = 0; attempt < 3; ++attempt) {
         if (cancelled.load()) throw std::runtime_error("Cancelled");
-        HINTERNET session = WinHttpOpen(L"glAIpnir/0.1.0", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+        const auto user_agent = widen(std::string("glAIpnir/") + HARNESS_VERSION);
+        HINTERNET session = WinHttpOpen(user_agent.c_str(), WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
         http_check(session != nullptr);
         HINTERNET connection{}; std::atomic<HINTERNET> request{};
         bool timed_out = false;

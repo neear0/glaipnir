@@ -1,6 +1,7 @@
 #include "harness/cli/cli.hpp"
 #include "harness/core/runtime.hpp"
 #include "harness/windows/tools.hpp"
+#include "harness/windows/analysis.hpp"
 #include <iostream>
 #include <sstream>
 #include <cctype>
@@ -11,9 +12,12 @@ static BOOL WINAPI handle_control(DWORD event) {
     return FALSE;
 }
 static void help() {
-    std::cout << "glAIpnir 0.1.0 - Windows research harness\n"
-        "Global options: --store PATH --config FILE --json\n"
+    std::cout << "glAIpnir " HARNESS_VERSION " - Windows research harness\n"
+        "Global options: --store PATH --config FILE --json --enable-debug-privilege\n"
         "  session create TARGET\n  session list\n  session show ID\n  session export ID DIRECTORY\n"
+        "  session create --type file PATH\n  session create --type process PID\n"
+        "  session create --type service NAME\n  session create --type registry KEY [--view native|32|64]\n"
+        "  session create --type machine\n"
         "  tools list\n  tool run ID TOOL JSON|@FILE\n  investigate ID PROFILE GOAL\n  shell\n"
         "Interactive commands use the same syntax. Quote arguments with double quotes.\n"
         "Use @FILE for JSON containing quotes. Type exit to leave the shell.\n";
@@ -37,6 +41,20 @@ static harness::json_t command(const std::vector<std::string>& args, harness::c_
     if (args.size() == 3 && args[0] == "session" && args[1] == "create") {
         auto id = runtime.create_session(harness::widen(args[2])); return {{"session_id", id}};
     }
+    if (args.size() >= 4 && args[0] == "session" && args[1] == "create" && args[2] == "--type") {
+        const auto kind = args[3]; harness::target_kind_t type;
+        if (kind == "file") type = harness::target_kind_t::file;
+        else if (kind == "process") type = harness::target_kind_t::process;
+        else if (kind == "service") type = harness::target_kind_t::service;
+        else if (kind == "registry") type = harness::target_kind_t::registry;
+        else if (kind == "machine") type = harness::target_kind_t::machine;
+        else throw std::runtime_error("Unknown target type: " + kind);
+        if ((type == harness::target_kind_t::machine && args.size() != 4) ||
+            (type != harness::target_kind_t::machine && args.size() != 5 && !(type == harness::target_kind_t::registry && args.size() == 7 && args[5] == "--view")))
+            throw std::runtime_error("Invalid target arguments; use --help");
+        auto target = harness::windows::resolve_target(type, args.size() >= 5 ? args[4] : "", args.size() == 7 ? args[6] : "native");
+        return {{"session_id", runtime.create_session(target)}};
+    }
     if (args.size() == 3 && args[0] == "session" && args[1] == "show") return {{"session", store.session(args[2])}, {"records", store.records(args[2])}};
     if (args.size() == 4 && args[0] == "session" && args[1] == "export") return store.export_session(args[2], harness::widen(args[3]));
     if (args.size() == 5 && args[0] == "tool" && args[1] == "run") {
@@ -52,28 +70,32 @@ static harness::json_t command(const std::vector<std::string>& args, harness::c_
 int harness::cli::run(std::vector<std::string> arguments) {
     SetConsoleCP(CP_UTF8); SetConsoleOutputCP(CP_UTF8);
     if (arguments.empty() || arguments[0] == "--help" || arguments[0] == "help") { help(); return 0; }
-    if (arguments[0] == "--version") { std::cout << "0.1.0\n"; return 0; }
+    if (arguments[0] == "--version") { std::cout << HARNESS_VERSION "\n"; return 0; }
     std::filesystem::path root = L".glaipnir", config_path;
-    bool json_output = false;
+    bool json_output = false, enable_debug = false;
     std::vector<std::string> args;
     for (std::size_t index = 0; index < arguments.size(); ++index) {
         if (arguments[index] == "--json") json_output = true;
+        else if (arguments[index] == "--enable-debug-privilege") enable_debug = true;
         else if (arguments[index] == "--store" || arguments[index] == "--config") {
             const auto option = arguments[index];
             if (++index == arguments.size()) throw std::runtime_error("Missing value for " + option);
             (option == "--store" ? root : config_path) = widen(arguments[index]);
         } else args.push_back(arguments[index]);
     }
+    if (args.size() == 1 && (args[0] == "--help" || args[0] == "help")) { help(); return 0; }
+    if (args.size() == 1 && args[0] == "--version") { std::cout << HARNESS_VERSION "\n"; return 0; }
     json_t config = config_path.empty() ? json_t::object() : read_json(config_path);
     config = public_config(config);
-    storage::c_evidence_store store(root); c_runtime runtime(store, config, cancelled);
+    windows::c_privilege_scope privilege(enable_debug);
+    storage::c_evidence_store store(root); c_runtime runtime(store, config, cancelled, enable_debug);
     check_win(SetConsoleCtrlHandler(handle_control, TRUE) != FALSE, "Install cancellation handler");
     auto print = [json_output](const json_t& result) { std::cout << dump_json(result, json_output ? -1 : 2) << '\n'; };
     int result_code = 0;
     try {
         if (args.size() == 1 && args[0] == "shell") {
             const bool interactive = GetFileType(GetStdHandle(STD_INPUT_HANDLE)) == FILE_TYPE_CHAR;
-            if (interactive) std::cerr << "glAIpnir 0.1.0. Use help or exit.\n";
+            if (interactive) std::cerr << "glAIpnir " HARNESS_VERSION ". Use help or exit.\n";
             std::string line;
             while (true) {
                 if (interactive) std::cerr << "glaipnir> ";

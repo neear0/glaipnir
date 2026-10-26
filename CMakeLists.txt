@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(glaipnir VERSION 0.1.0 LANGUAGES C CXX)
+project(glaipnir VERSION 0.2.0 LANGUAGES C CXX)
 set(CMAKE_VS_GLOBALS "VcpkgEnabled=false")
 
 if(NOT WIN32)
@@ -39,7 +39,7 @@ add_library(harness STATIC
 target_include_directories(harness PUBLIC glAIpnir/include)
 target_link_libraries(harness PUBLIC nlohmann_json::nlohmann_json PRIVATE sqlite3 winhttp bcrypt advapi32 psapi)
 target_compile_features(harness PUBLIC cxx_std_20)
-target_compile_definitions(harness PUBLIC UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_compile_definitions(harness PUBLIC UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX HARNESS_VERSION="${PROJECT_VERSION}")
 set_target_properties(harness PROPERTIES CXX_EXTENSIONS NO)
 add_executable(glaipnir glAIpnir/src/main.cpp)
 target_link_libraries(glaipnir PRIVATE harness)

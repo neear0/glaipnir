@@ -22,11 +22,12 @@ private:
 };
 class c_runtime {
 public:
-    c_runtime(storage::c_evidence_store& store, json_t config, std::atomic_bool& cancelled);
+    c_runtime(storage::c_evidence_store& store, json_t config, std::atomic_bool& cancelled, bool debug_requested = false);
     json_t dispatch(const std::string& session_id, const std::string& tool, const json_t& arguments, const std::string& call_id = "");
     json_t investigate(const std::string& session_id, const std::string& goal, const std::string& profile,
         std::shared_ptr<ai::c_http_transport> transport = std::make_shared<ai::c_winhttp_transport>());
     std::string create_session(const std::filesystem::path& target);
+    std::string create_session(const research_target_t& target);
 private:
     storage::c_evidence_store& store_;
     json_t config_;

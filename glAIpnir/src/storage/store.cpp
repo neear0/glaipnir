@@ -1,4 +1,5 @@
 #include "harness/storage/store.hpp"
+#include "harness/windows/analysis.hpp"
 #include <sqlite3.h>
 #include <memory>
 #include <array>
@@ -50,8 +51,16 @@ void harness::storage::c_evidence_store::execute(const char* sql) const {
     }
 }
 std::string harness::storage::c_evidence_store::create_session(const std::filesystem::path& target, const harness::json_t& config) {
-    const auto path = std::filesystem::canonical(target);
-    if (!std::filesystem::is_regular_file(path)) throw std::runtime_error("Target must be a local file");
+    return create_session(windows::resolve_target(target_kind_t::file, path_text(target)), config);
+}
+std::string harness::storage::c_evidence_store::create_session(const harness::research_target_t& target, const harness::json_t& config) {
+    const auto info = windows::target_json(target);
+    const auto directory = target.kind == target_kind_t::file ? std::filesystem::path(widen(info.at("path"))).parent_path() : std::filesystem::current_path();
+    std::string display = info.at("kind");
+    if (target.kind == target_kind_t::file) display = info.at("path");
+    else if (target.kind == target_kind_t::process) display += ":" + std::to_string(info.at("pid").get<DWORD>());
+    else if (target.kind == target_kind_t::service) display += ":" + info.at("name").get<std::string>();
+    else if (target.kind == target_kind_t::registry) display += ":" + info.at("key").get<std::string>();
     const auto id = new_id();
     std::array<wchar_t, MAX_COMPUTERNAME_LENGTH + 1> computer{}; DWORD computer_size = static_cast<DWORD>(computer.size());
     check_win(GetComputerNameW(computer.data(), &computer_size) != FALSE, "GetComputerName");
@@ -60,9 +69,10 @@ std::string harness::storage::c_evidence_store::create_session(const std::filesy
     OSVERSIONINFOW version{}; version.dwOSVersionInfoSize = sizeof(version);
     json_t host = {{"computer", narrow(std::wstring(computer.data(), computer_size))}, {"architecture", "x64"}};
     if (get_version && get_version(&version) >= 0) host["windows"] = {{"major", version.dwMajorVersion}, {"minor", version.dwMinorVersion}, {"build", version.dwBuildNumber}};
-    json_t data = {{"id", id}, {"target", path_text(path)}, {"target_sha256", sha256(path)},
-        {"created", timestamp()}, {"version", "0.1.0"}, {"config", config}, {"working_directory", path_text(path.parent_path())},
+    json_t data = {{"id", id}, {"target", display}, {"target_info", info},
+        {"created", timestamp()}, {"version", HARNESS_VERSION}, {"config", config}, {"working_directory", path_text(directory)},
         {"host", host}};
+    if (target.kind == target_kind_t::file) data["target_sha256"] = info.at("sha256");
     auto statement = prepare(database_, "INSERT INTO sessions(id,data) VALUES(?,?)");
     bind_text(statement.get(), 1, id); bind_text(statement.get(), 2, dump_json(data)); finish(database_, statement.get());
     return id;
@@ -70,14 +80,14 @@ std::string harness::storage::c_evidence_store::create_session(const std::filesy
 harness::json_t harness::storage::c_evidence_store::list_sessions() const {
     auto statement = prepare(database_, "SELECT data FROM sessions ORDER BY rowid");
     json_t result = json_t::array(); int status{};
-    while ((status = sqlite3_step(statement.get())) == SQLITE_ROW) result.push_back(json_t::parse(column(statement.get(), 0)));
+    while ((status = sqlite3_step(statement.get())) == SQLITE_ROW) result.push_back(windows::normalize_session(json_t::parse(column(statement.get(), 0))));
     if (status != SQLITE_DONE) throw std::runtime_error(sqlite3_errmsg(database_));
     return result;
 }
 harness::json_t harness::storage::c_evidence_store::session(const std::string& id) const {
     auto statement = prepare(database_, "SELECT data FROM sessions WHERE id=?"); bind_text(statement.get(), 1, id);
     if (sqlite3_step(statement.get()) != SQLITE_ROW) throw std::runtime_error("Unknown session: " + id);
-    return json_t::parse(column(statement.get(), 0));
+    return windows::normalize_session(json_t::parse(column(statement.get(), 0)));
 }
 harness::json_t harness::storage::c_evidence_store::records(const std::string& session_id, const std::string& kind) const {
     auto statement = prepare(database_, "SELECT id,kind,data,created FROM records WHERE session_id=? AND (?='' OR kind=?) ORDER BY sequence");

@@ -10,6 +10,7 @@ public:
     c_evidence_store(const c_evidence_store&) = delete;
     c_evidence_store& operator=(const c_evidence_store&) = delete;
     std::string create_session(const std::filesystem::path& target, const json_t& config);
+    std::string create_session(const research_target_t& target, const json_t& config);
     json_t list_sessions() const;
     json_t session(const std::string& id) const;
     json_t records(const std::string& session_id, const std::string& kind = "") const;
