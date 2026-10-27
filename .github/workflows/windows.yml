@@ -27,3 +27,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Installed executable failed' }
           & ./out/package/bin/glAIpnir-worker.exe --version
           if ($LASTEXITCODE -ne 0) { throw 'Installed worker failed' }
+          & ./out/package/bin/glAIpnir-dump32.exe --version
+          if ($LASTEXITCODE -ne 0) { throw 'Installed WOW64 helper failed' }
+          powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File tests/research_loop_cli.ps1 -Harness "$PWD/out/package/bin/glAIpnir.exe" -Fixture "$PWD/out/build/research-x86/${{ matrix.preset == 'debug' && 'Debug' || 'Release' }}/research_fixture.exe" -Root "$PWD/out/installed-research-data"
+          if ($LASTEXITCODE -ne 0) { throw 'Installed research workflows failed' }
