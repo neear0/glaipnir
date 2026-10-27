@@ -47,7 +47,9 @@ int wmain(int argc, wchar_t** argv) {
         auto result = run({{"arguments", {"crash"}}, {"entry_breakpoint", false}});
         harness::tests::check(result.at("ok") == true && result.at("outcome") == "crash" && result.at("crashes").size() == 1, "crash collection: " + harness::dump_json(result));
         const auto& crash = result.at("crashes").front();
-        harness::tests::check(crash.at("exception_code") == EXCEPTION_ACCESS_VIOLATION && crash.at("signature_normalized") == true && crash.at("dump_result").at("ok") == true, "crash details and minidump");
+        harness::tests::check(crash.at("exception_code") == EXCEPTION_ACCESS_VIOLATION && crash.at("signature_normalized") == true && crash.at("dump_result").at("ok") == true,
+            "crash details and minidump: " + harness::dump_json({{"exception_code", crash.at("exception_code")},
+                {"signature_normalized", crash.at("signature_normalized")}, {"dump_result", crash.at("dump_result")}}));
         auto path = evidence(result, crash.at("minidump"));
         auto inspected = execute("crash_info", {{"path", harness::path_text(path)}});
         harness::tests::check(inspected.at("ok") == true && inspected.at("architecture") == architecture && inspected.at("has_exception") == true &&
