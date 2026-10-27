@@ -39,7 +39,9 @@ add_library(harness STATIC
     glAIpnir/src/research/debugger.cpp
     glAIpnir/src/research/crash.cpp
     glAIpnir/src/research/fuzzer.cpp
+    glAIpnir/src/research/session.cpp
     glAIpnir/src/ai/model.cpp
+    glAIpnir/src/ai/context.cpp
     glAIpnir/src/ai/http.cpp
     glAIpnir/src/cli/cli.cpp)
 target_include_directories(harness PUBLIC glAIpnir/include)
