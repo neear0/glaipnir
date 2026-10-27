@@ -43,7 +43,10 @@ Invoke-ResearchCommand @('session', 'export', $destination, $export) | Out-Null
 $history = Get-Content -LiteralPath (Join-Path $export 'history.json') -Raw | ConvertFrom-Json
 foreach ($record in $history.records) {
     if ($record.kind -eq 'artifact') {
-        $hash = (Get-FileHash -LiteralPath (Join-Path $export $record.data.path) -Algorithm SHA256).Hash.ToLowerInvariant()
+        $stream = [IO.File]::OpenRead((Join-Path $export $record.data.path))
+        $sha = [Security.Cryptography.SHA256]::Create()
+        try { $hash = [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '').ToLowerInvariant() }
+        finally { $sha.Dispose(); $stream.Dispose() }
         if ($hash -ne $record.data.sha256) { throw 'Imported export artifact integrity mismatch' }
     }
 }
