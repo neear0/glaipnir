@@ -2,6 +2,7 @@
 #include "harness/core/runtime.hpp"
 #include "harness/windows/tools.hpp"
 #include "harness/windows/analysis.hpp"
+#include "harness/research/session.hpp"
 #include <iostream>
 #include <sstream>
 #include <cctype>
@@ -21,6 +22,10 @@ static void help() {
         "  tools list\n  tool run ID TOOL JSON|@FILE\n  investigate ID PROFILE GOAL\n  shell\n"
         "  debug run|attach ID JSON|@FILE\n  fuzz run ID JSON|@FILE\n  crash replay ID JSON|@FILE\n"
         "  crash list ID\n  crash show ID RECORD_ID\n"
+        "  hypothesis create|assess ID JSON|@FILE\n  hypothesis list ID\n  hypothesis show ID RECORD_ID\n"
+        "  experiment run ID JSON|@FILE\n  experiment list ID\n  experiment show ID RECORD_ID\n"
+        "  research records ID [JSON|@FILE]\n  research show ID RECORD_ID\n  research context ID\n"
+        "  research import DESTINATION_ID SOURCE_ID JSON|@FILE\n"
         "Interactive commands use the same syntax. Quote arguments with double quotes.\n"
         "Use @FILE for JSON containing quotes. Type exit to leave the shell.\n";
 }
@@ -38,7 +43,24 @@ static std::vector<std::string> tokenize(const std::string& line) {
     if (active) result.push_back(token); return result;
 }
 static harness::json_t command(const std::vector<std::string>& args, harness::c_runtime& runtime, harness::storage::c_evidence_store& store) {
-    if (args.size() == 2 && args[0] == "tools" && args[1] == "list") return harness::windows::tool_definitions();
+    if (args.size() == 2 && args[0] == "tools" && args[1] == "list") return harness::research::all_tool_definitions();
+    auto read_arguments = [](const std::string& value) { return value.starts_with('@') ? harness::read_json(harness::widen(value.substr(1))) : harness::json_t::parse(value); };
+    if (args.size() == 4 && ((args[0] == "hypothesis" && (args[1] == "create" || args[1] == "assess")) || (args[0] == "experiment" && args[1] == "run")))
+        return runtime.dispatch(args[2], args[0] + "_" + args[1], read_arguments(args[3]));
+    if (args.size() == 3 && (args[0] == "hypothesis" || args[0] == "experiment") && args[1] == "list")
+        return runtime.dispatch(args[2], "research_records", {{"kind", args[0]}});
+    if (args.size() == 4 && (args[0] == "hypothesis" || args[0] == "experiment" || args[0] == "research") && args[1] == "show")
+        return runtime.dispatch(args[2], "research_record_get", {{"record_id", args[3]}});
+    if ((args.size() == 3 || args.size() == 4) && args[0] == "research" && args[1] == "records")
+        return runtime.dispatch(args[2], "research_records", args.size() == 4 ? read_arguments(args[3]) : harness::json_t::object());
+    if (args.size() == 3 && args[0] == "research" && args[1] == "context") return runtime.research_context(args[2]);
+    if (args.size() == 5 && args[0] == "research" && args[1] == "import") {
+        try {
+            const auto parameters = read_arguments(args[4]);
+            harness::validate_arguments(parameters, {{"type", "object"}, {"properties", {{"record_ids", {{"type", "array"}, {"items", {{"type", "string"}}}, {"minItems", 1}, {"maxItems", 100}}}}}, {"required", {"record_ids"}}});
+            return store.import_research(args[2], args[3], parameters.at("record_ids"), cancelled);
+        } catch (const std::exception& error) { return {{"ok", false}, {"cancelled", cancelled.load()}, {"error", error.what()}}; }
+    }
     if (args.size() == 2 && args[0] == "session" && args[1] == "list") return store.list_sessions();
     if (args.size() == 3 && args[0] == "session" && args[1] == "create") {
         auto id = runtime.create_session(harness::widen(args[2])); return {{"session_id", id}};
