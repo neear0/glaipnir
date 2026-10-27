@@ -1,4 +1,4 @@
-param([string]$Harness, [string]$Fixture, [string]$Root)
+param([string]$Harness, [string]$Fixture, [string]$Root, [Parameter(Mandatory=$true)][string]$ExpectedVersion)
 $ErrorActionPreference = 'Stop'
 $location = Join-Path $Root ([Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force $location | Out-Null
@@ -46,5 +46,5 @@ foreach ($target in $typedTargets) {
     if ($LASTEXITCODE -ne 0) { throw 'Typed CLI export failed' }
 }
 $version = & $Harness --version
-if ($version -ne '0.3.0') { throw 'CLI version mismatch' }
+if ($version -ne $ExpectedVersion) { throw 'CLI version mismatch' }
 Write-Output 'PASS CLI typed file, process, service, registry and machine sessions'

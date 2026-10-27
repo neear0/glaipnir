@@ -110,6 +110,12 @@ if(BUILD_TESTING)
     harness_warnings(research_tests)
     add_test(NAME research_backend COMMAND research_tests $<TARGET_FILE:research_fixture>)
     set_tests_properties(research_backend PROPERTIES TIMEOUT 120)
+    add_executable(research_loop_tests tests/research_loop_tests.cpp)
+    target_link_libraries(research_loop_tests PRIVATE harness sqlite3)
+    add_dependencies(research_loop_tests glaipnir_worker research_fixture)
+    harness_warnings(research_loop_tests)
+    add_test(NAME research_loop COMMAND research_loop_tests $<TARGET_FILE:research_fixture>)
+    set_tests_properties(research_loop PROPERTIES TIMEOUT 120)
     set(HARNESS_X86_FIXTURE_ROOT "${CMAKE_SOURCE_DIR}/out/build/research-x86" CACHE PATH "Optional standalone Win32 research fixture build")
     if(EXISTS "${HARNESS_X86_FIXTURE_ROOT}/CMakeCache.txt")
         add_custom_target(research_fixture_x86
@@ -123,6 +129,7 @@ if(BUILD_TESTING)
     add_test(NAME cli_workflow COMMAND powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass
         -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/cli.ps1
         -Harness $<TARGET_FILE:glaipnir> -Fixture $<TARGET_FILE:harness_fixture>
+        -ExpectedVersion ${PROJECT_VERSION}
         -Root ${CMAKE_CURRENT_BINARY_DIR}/cli-test-data/$<CONFIG>)
     set_tests_properties(cli_workflow PROPERTIES TIMEOUT 60)
     add_test(NAME research_cli COMMAND powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass
@@ -130,5 +137,10 @@ if(BUILD_TESTING)
         -Harness $<TARGET_FILE:glaipnir> -Fixture $<TARGET_FILE:research_fixture>
         -Root ${CMAKE_CURRENT_BINARY_DIR}/research-cli-data/$<CONFIG>)
     set_tests_properties(research_cli PROPERTIES TIMEOUT 60)
+    add_test(NAME research_loop_cli COMMAND powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass
+        -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/research_loop_cli.ps1
+        -Harness $<TARGET_FILE:glaipnir> -Fixture $<TARGET_FILE:research_fixture>
+        -Root ${CMAKE_CURRENT_BINARY_DIR}/research-loop-cli-data/$<CONFIG>)
+    set_tests_properties(research_loop_cli PROPERTIES TIMEOUT 60)
 endif()
 set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT glaipnir)
