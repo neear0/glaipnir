@@ -1,11 +1,12 @@
-# glAIpnir 0.3
+# glAIpnir 0.4
 
 A Windows-native C++20 research harness with persistent sessions, native tools,
 and model-driven task dispatch. Research direction and conventions are in
-[coms.md](glAIpnir/coms.md). Version 0.3 adds bounded user-mode debugging,
-deterministic mutation campaigns, minidumps, and reproducible case replay to the
-existing Windows analysis tools. The AI research loop, kernel integration, and
-AD assessment remain later milestones.
+[coms.md](glAIpnir/coms.md). Version 0.4 adds a structured AI research loop with
+persistent hypotheses, experiments, evidence-linked assessments, bounded context,
+and explicit research imports between sessions. It builds on the Windows
+analysis, debugging, fuzzing, dump, and replay tools. Kernel integration and AD
+assessment remain later milestones.
 
 ## Build
 
@@ -92,11 +93,28 @@ arguments to avoid nested shell quoting. Commands can also be piped into `shell`
 | `tools list` | Show tool names and JSON argument schemas |
 | `tool run ID TOOL JSON\|@FILE` | Execute a native tool without a model |
 | `investigate ID PROFILE GOAL` | Run or continue a model-driven investigation |
+| `research context ID` | Inspect persistent research context |
+| `research import DEST SOURCE JSON\|@FILE` | Copy selected research and evidence between sessions |
 | `shell` | Start the persistent command prompt |
 
 Global options: `--store PATH` (default `.glaipnir`), `--config FILE`, `--json`
 (compact JSON), and `--enable-debug-privilege`. Diagnostics go to stderr. Exit codes: 0 success, 1 failure, 130
 cancelled operation. Interactive command errors leave the prompt running.
+
+## AI research loop
+
+`investigate` can record hypotheses, execute linked native experiments, assess
+their measurements, and choose the next experiment. The same operations are
+available manually through `hypothesis create`, `experiment run`, and
+`hypothesis assess`. Assessments remain unverified; they never automatically
+become findings.
+
+Context checkpoints preserve research across restarts while bounding model
+requests. Original history remains available. Explicit imports copy selected
+research and verified evidence between sessions in the same store, retaining
+provenance and identifying different-target material as background context.
+See [AI research workflows](docs/research_loop.md) for schemas, commands,
+budgets, compaction, import behavior, and compatibility.
 
 ## Windows analysis
 
@@ -193,7 +211,8 @@ tasks interrupted and supplies error results for unresolved model calls. All
 completed evidence remains available. Model summaries are explicitly unverified;
 there is no automatic promotion to verified findings. Conversations are bounded
 to an 8 MiB request and HTTP responses to 16 MiB; exhausted budgets stop the run
-with evidence preserved. Context compaction and streaming are deferred.
+with evidence preserved. Version 0.4 compacts model context while preserving
+complete history; streaming remains deferred.
 Existing 0.1 sessions are normalized as file targets when read, preserving their
 original database records and creation-version provenance. No migration is needed.
 
@@ -220,3 +239,6 @@ Live provider smoke checks are optional and separate from the default suite.
 The research suites cover native x64 and WOW64 fixtures, instruction stepping,
 attachment/detachment, minidump context integrity, reproducible mutations,
 replay, process cleanup, interrupted evidence recovery, and the research CLI.
+The research-loop suites cover typed research records, all three model adapters,
+restart and provider switching, context compaction, explicit imports, evidence
+integrity, and self-contained destination exports.

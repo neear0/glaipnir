@@ -26,6 +26,9 @@
     "operation_timeout_ms": 60000,
     "output_limit": 1048576,
     "http_timeout_ms": 120000,
-    "max_turns": 32
+    "max_turns": 32,
+    "max_experiments": 32,
+    "context_budget_bytes": 1048576,
+    "context_recent_exchanges": 8
   }
 }

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(glaipnir VERSION 0.3.0 LANGUAGES C CXX)
+project(glaipnir VERSION 0.4.0 LANGUAGES C CXX)
 set(CMAKE_VS_GLOBALS "VcpkgEnabled=false")
 
 if(NOT WIN32)
