@@ -26,6 +26,7 @@ add_library(harness STATIC
     glAIpnir/src/core/runtime.cpp
     glAIpnir/src/core/util.cpp
     glAIpnir/src/storage/store.cpp
+    glAIpnir/src/storage/research_store.cpp
     glAIpnir/src/windows/tools.cpp
     glAIpnir/src/windows/analysis.cpp
     glAIpnir/src/windows/process.cpp

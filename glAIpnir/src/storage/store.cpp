@@ -100,9 +100,9 @@ harness::json_t harness::storage::c_evidence_store::records(const std::string& s
     if (status != SQLITE_DONE) throw std::runtime_error(sqlite3_errmsg(database_));
     return result;
 }
-std::string harness::storage::c_evidence_store::append(const std::string& session_id, const std::string& kind, const harness::json_t& data) {
+std::string harness::storage::c_evidence_store::append(const std::string& session_id, const std::string& kind, const harness::json_t& data, const std::string& record_id) {
     auto statement = prepare(database_, "INSERT INTO records(id,session_id,kind,data,created) VALUES(?,?,?,?,?)");
-    auto id = new_id(); bind_text(statement.get(), 1, id); bind_text(statement.get(), 2, session_id); bind_text(statement.get(), 3, kind);
+    auto id = record_id.empty() ? new_id() : record_id; bind_text(statement.get(), 1, id); bind_text(statement.get(), 2, session_id); bind_text(statement.get(), 3, kind);
     bind_text(statement.get(), 4, dump_json(data)); bind_text(statement.get(), 5, timestamp()); finish(database_, statement.get()); return id;
 }
 void harness::storage::c_evidence_store::update_task(const std::string& id, harness::task_state_t state, const harness::json_t& result) {
@@ -110,14 +110,18 @@ void harness::storage::c_evidence_store::update_task(const std::string& id, harn
     bind_text(statement.get(), 1, state_text(state)); bind_text(statement.get(), 2, timestamp());
     bind_text(statement.get(), 3, dump_json(result)); bind_text(statement.get(), 4, id); finish(database_, statement.get());
     if (sqlite3_changes(database_) != 1) throw std::runtime_error("Unknown task");
+    auto experiment = prepare(database_, "UPDATE records SET data=json_set(data,'$.state',?,'$.updated',?) WHERE kind='experiment' AND id=(SELECT json_extract(data,'$.experiment_id') FROM records WHERE id=? AND kind='task')");
+    bind_text(experiment.get(), 1, state_text(state)); bind_text(experiment.get(), 2, timestamp()); bind_text(experiment.get(), 3, id);
+    finish(database_, experiment.get());
 }
 harness::json_t harness::storage::c_evidence_store::complete_task(const std::string& session_id, const std::string& task_id,
-    harness::task_state_t state, harness::json_t result) {
-    execute("BEGIN IMMEDIATE");
+    harness::task_state_t state, harness::json_t result, bool register_files) {
+    execute("SAVEPOINT complete_task");
     try {
-        const auto workspace = root_ / "artifacts" / widen(session_id) / widen(task_id);
-        if (std::filesystem::is_directory(workspace)) {
-            result["artifact_root"] = path_text(std::filesystem::relative(workspace, root_));
+        const auto workspace_relative = std::filesystem::path("artifacts") / widen(session_id) / widen(task_id);
+        const auto workspace = extended_path(root_ / workspace_relative);
+        if (register_files && std::filesystem::is_directory(workspace)) {
+            result["artifact_root"] = path_text(workspace_relative);
             std::vector<std::filesystem::path> files; std::uintmax_t total = 0;
             for (const auto& entry : std::filesystem::recursive_directory_iterator(workspace)) {
                 if (entry.is_symlink() || (GetFileAttributesW(entry.path().c_str()) & FILE_ATTRIBUTE_REPARSE_POINT)) throw std::runtime_error("Reparse point in research artifacts");
@@ -127,10 +131,10 @@ harness::json_t harness::storage::c_evidence_store::complete_task(const std::str
             for (const auto& file : files) {
                 const auto size = std::filesystem::file_size(file); total += size;
                 if (total > 288 * 1024 * 1024) throw std::runtime_error("Research artifact byte limit exceeded");
-                append(session_id, "artifact", {{"path", path_text(std::filesystem::relative(file, root_))}, {"sha256", sha256(file)}, {"size", size}, {"task_id", task_id}, {"kind", "research"}});
+                append(session_id, "artifact", {{"path", path_text(workspace_relative / std::filesystem::relative(file, workspace))}, {"sha256", sha256(file)}, {"size", size}, {"task_id", task_id}, {"kind", "research"}});
             }
             result["evidence_file_count"] = files.size(); result["evidence_bytes"] = total;
-            for (const auto& file : files) if (file.filename() == L"crash.json") {
+            for (const auto& file : files) if (file.filename() == L"crash.json" && !result.value("imported_context", false)) {
                 const auto relative = path_text(std::filesystem::relative(file, workspace));
                 json_t record;
                 try {
@@ -149,24 +153,24 @@ harness::json_t harness::storage::c_evidence_store::complete_task(const std::str
             }
         }
         const auto artifact = save_artifact(session_id, dump_json(result, 2));
-        result["task_id"] = task_id; result["artifact"] = artifact.path;
-        append(session_id, "observation", {{"task_id", task_id}, {"data", result}});
+        result["task_id"] = task_id; result["artifact"] = artifact.path; result["artifact_id"] = artifact.record_id;
+        result["observation_id"] = append(session_id, "observation", {{"task_id", task_id}, {"data", result}});
         update_task(task_id, state, result);
-        execute("COMMIT"); return result;
-    } catch (...) { sqlite3_exec(database_, "ROLLBACK", nullptr, nullptr, nullptr); throw; }
+        execute("RELEASE complete_task"); return result;
+    } catch (...) { sqlite3_exec(database_, "ROLLBACK TO complete_task; RELEASE complete_task", nullptr, nullptr, nullptr); throw; }
 }
 std::filesystem::path harness::storage::c_evidence_store::task_workspace(const std::string& session_id, const std::string& task_id) {
     session(session_id);
     for (const auto& value : {session_id, task_id}) if (value.empty() || value == "." || value == ".." || value.find_first_of("/\\:") != std::string::npos) throw std::runtime_error("Invalid workspace identifier");
-    auto path = root_ / "artifacts" / widen(session_id) / widen(task_id); std::filesystem::create_directories(path); return path;
+    auto path = root_ / "artifacts" / widen(session_id) / widen(task_id); std::filesystem::create_directories(extended_path(path)); return path;
 }
 harness::artifact_t harness::storage::c_evidence_store::save_artifact(const std::string& session_id, const std::string& content) {
     session(session_id);
     auto relative = std::filesystem::path("artifacts") / widen(session_id) / widen(new_id() + ".json");
-    std::filesystem::create_directories((root_ / relative).parent_path());
+    std::filesystem::create_directories(extended_path((root_ / relative).parent_path()));
     write_text(root_ / relative, content);
-    artifact_t artifact{path_text(relative), sha256(root_ / relative), content.size()};
-    append(session_id, "artifact", {{"path", artifact.path}, {"sha256", artifact.sha256}, {"size", artifact.size}});
+    artifact_t artifact{path_text(relative), sha256(root_ / relative), content.size(), ""};
+    artifact.record_id = append(session_id, "artifact", {{"path", artifact.path}, {"sha256", artifact.sha256}, {"size", artifact.size}});
     return artifact;
 }
 void harness::storage::c_evidence_store::recover() {
@@ -178,6 +182,7 @@ void harness::storage::c_evidence_store::recover() {
         const auto workspace = root_ / "artifacts" / widen(session_id) / widen(task_id);
         if (!std::filesystem::is_directory(workspace)) continue;
         json_t result = {{"ok", false}, {"outcome", "interrupted"}, {"error", "Research worker interrupted; execution was not repeated"}, {"crashes", json_t::array()}};
+        if (record(session_id, task_id).at("data").value("tool", "") == "context_import") result["imported_context"] = true;
         if (std::filesystem::is_regular_file(workspace / "worker.json")) {
             if (GetFileAttributesW((workspace / "worker.json").c_str()) & FILE_ATTRIBUTE_REPARSE_POINT) throw std::runtime_error("Reparse point in worker identity");
             json_t identity;
@@ -200,6 +205,7 @@ void harness::storage::c_evidence_store::recover() {
     }
     execute("UPDATE records SET data=json_set(data,'$.state','interrupted','$.result',json('{\"ok\":false,\"error\":\"Process interrupted; execution was not repeated\"}')) "
         "WHERE kind='task' AND json_extract(data,'$.state') IN ('queued','running')");
+    execute("UPDATE records SET data=json_set(data,'$.state',COALESCE((SELECT json_extract(t.data,'$.state') FROM records t WHERE t.id=json_extract(records.data,'$.task_id') AND t.kind='task'),'interrupted')) WHERE kind='experiment' AND json_extract(data,'$.state') IN ('queued','running')");
     for (const auto& entry : list_sessions()) {
         const std::string id = entry.at("id");
         std::vector<message_t> messages;
@@ -220,16 +226,16 @@ void harness::storage::c_evidence_store::recover() {
 }
 harness::json_t harness::storage::c_evidence_store::export_session(const std::string& session_id, const std::filesystem::path& destination) const {
     auto data = session(session_id);
-    if (std::filesystem::exists(destination)) throw std::runtime_error("Export destination must not exist");
-    std::filesystem::create_directories(destination);
+    if (std::filesystem::exists(extended_path(destination))) throw std::runtime_error("Export destination must not exist");
+    std::filesystem::create_directories(extended_path(destination));
     auto history = records(session_id);
     for (const auto& record : history) if (record.at("kind") == "artifact") {
         const auto& artifact = record.at("data");
         auto path = std::filesystem::path(widen(artifact.at("path")));
         if (path.is_absolute() || path.lexically_normal().native().find(L"..") != std::wstring::npos) throw std::runtime_error("Invalid artifact path");
         if (sha256(root_ / path) != artifact.at("sha256").get<std::string>()) throw std::runtime_error("Artifact integrity check failed");
-        std::filesystem::create_directories((destination / path).parent_path());
-        std::filesystem::copy_file(root_ / path, destination / path);
+        std::filesystem::create_directories(extended_path((destination / path).parent_path()));
+        std::filesystem::copy_file(extended_path(root_ / path), extended_path(destination / path));
     }
     write_text(destination / "history.json", dump_json({{"session", data}, {"records", history}}, 2));
     json_t operations = json_t::array();

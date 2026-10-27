@@ -4,6 +4,8 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include <algorithm>
+#include <limits>
 
 void harness::check_win(bool success, const char* operation) {
     if (!success) throw std::runtime_error(std::string(operation) + " failed (Windows error " + std::to_string(GetLastError()) + ")");
@@ -42,19 +44,25 @@ std::string harness::new_id() {
 std::string harness::dump_json(const harness::json_t& value, int indent) {
     return value.dump(indent, ' ', false, json_t::error_handler_t::replace);
 }
+std::filesystem::path harness::extended_path(const std::filesystem::path& path) {
+    auto absolute = std::filesystem::absolute(path).lexically_normal().wstring();
+    if (absolute.starts_with(L"\\\\?\\")) return absolute;
+    if (absolute.starts_with(L"\\\\")) return L"\\\\?\\UNC\\" + absolute.substr(2);
+    return L"\\\\?\\" + absolute;
+}
 harness::json_t harness::read_json(const std::filesystem::path& path) {
-    std::ifstream stream(path, std::ios::binary);
+    std::ifstream stream(extended_path(path), std::ios::binary);
     if (!stream) throw std::runtime_error("Cannot read " + path_text(path));
     return json_t::parse(stream);
 }
 void harness::write_text(const std::filesystem::path& path, const std::string& value) {
-    std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+    std::ofstream stream(extended_path(path), std::ios::binary | std::ios::trunc);
     if (!stream || !(stream << value)) throw std::runtime_error("Cannot write " + path_text(path));
     stream.close();
     if (!stream) throw std::runtime_error("Cannot finish writing " + path_text(path));
 }
 std::string harness::sha256(const std::filesystem::path& path, const std::atomic_bool* cancelled) {
-    std::ifstream stream(path, std::ios::binary);
+    std::ifstream stream(extended_path(path), std::ios::binary);
     if (!stream) throw std::runtime_error("Cannot hash " + path_text(path));
     BCRYPT_ALG_HANDLE algorithm{};
     if (BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, 0) < 0) throw std::runtime_error("SHA-256 unavailable");
@@ -122,9 +130,46 @@ harness::limits_t harness::parse_limits(const harness::json_t& config) {
     limits.output_limit = input.value("output_limit", std::size_t{1024 * 1024});
     limits.http_timeout_ms = input.value("http_timeout_ms", 120000);
     limits.max_turns = input.value("max_turns", 32);
+    limits.max_experiments = input.value("max_experiments", 32);
+    limits.context_budget_bytes = input.value("context_budget_bytes", std::size_t{1024 * 1024});
+    limits.context_recent_exchanges = input.value("context_recent_exchanges", 8);
     if (limits.operation_timeout_ms < 1 || limits.output_limit < 1 || limits.output_limit > 64 * 1024 * 1024 ||
-        limits.http_timeout_ms < 1 || limits.max_turns < 1 || limits.max_turns > 10000) throw std::runtime_error("Invalid execution limits");
+        limits.http_timeout_ms < 1 || limits.max_turns < 1 || limits.max_turns > 10000 || limits.max_experiments < 1 || limits.max_experiments > 1000 ||
+        limits.context_budget_bytes < 4096 || limits.context_budget_bytes > 4 * 1024 * 1024 ||
+        limits.context_recent_exchanges < 1 || limits.context_recent_exchanges > 64) throw std::runtime_error("Invalid execution limits");
     return limits;
+}
+void harness::validate_arguments(const harness::json_t& value, const harness::json_t& rule, const std::string& path) {
+    const auto type = rule.at("type").get<std::string>();
+    if ((type == "object" && !value.is_object()) || (type == "string" && !value.is_string()) ||
+        (type == "array" && !value.is_array()) || (type == "boolean" && !value.is_boolean()) ||
+        (type == "integer" && !value.is_number_integer())) throw std::runtime_error("Invalid argument type: " + path);
+    if (type == "string") {
+        const auto& text = value.get_ref<const std::string&>();
+        if (text.find('\0') != std::string::npos) throw std::runtime_error("Embedded NUL in argument: " + path);
+        if (text.size() < rule.value("minLength", std::size_t{0}) || text.size() > rule.value("maxLength", (std::numeric_limits<std::size_t>::max)()))
+            throw std::runtime_error("Argument text length outside valid range: " + path);
+    }
+    if (type == "integer") {
+        if (!value.is_number_unsigned() && value.get<std::int64_t>() < 0) throw std::runtime_error("Negative argument: " + path);
+        const auto number = value.get<std::uint64_t>();
+        if (number < rule.value("minimum", std::uint64_t{0}) || number > rule.value("maximum", (std::numeric_limits<std::uint64_t>::max)()))
+            throw std::runtime_error("Argument outside valid range: " + path);
+    }
+    if (rule.contains("enum") && std::find(rule.at("enum").begin(), rule.at("enum").end(), value) == rule.at("enum").end()) throw std::runtime_error("Invalid argument value: " + path);
+    if (type == "array") {
+        if (value.size() < rule.value("minItems", std::size_t{0}) || value.size() > rule.value("maxItems", (std::numeric_limits<std::size_t>::max)()))
+            throw std::runtime_error("Argument array length outside valid range: " + path);
+        for (const auto& item : value) validate_arguments(item, rule.at("items"), path + "[]");
+    }
+    if (type == "object") {
+        for (const auto& required : rule.value("required", json_t::array())) if (!value.contains(required.get<std::string>())) throw std::runtime_error("Missing argument: " + path + "." + required.get<std::string>());
+        if (!rule.contains("properties")) return;
+        for (const auto& [key, item] : value.items()) {
+            if (!rule.at("properties").contains(key)) throw std::runtime_error("Unknown argument: " + path + "." + key);
+            validate_arguments(item, rule.at("properties").at(key), path + "." + key);
+        }
+    }
 }
 harness::profile_t harness::parse_profile(const harness::json_t& config, const std::string& name) {
     const auto& input = config.at("profiles").at(name);

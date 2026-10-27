@@ -27,30 +27,9 @@ harness::json_t harness::windows::tool_definitions() {
     for (const auto& definition : research::tool_definitions()) result.push_back(definition);
     return result;
 }
-static void validate_value(const harness::json_t& value, const harness::json_t& rule, const std::string& path) {
-    const auto type = rule.at("type").get<std::string>();
-    if ((type == "object" && !value.is_object()) || (type == "string" && !value.is_string()) ||
-        (type == "array" && !value.is_array()) || (type == "boolean" && !value.is_boolean()) ||
-        (type == "integer" && !value.is_number_integer())) throw std::runtime_error("Invalid argument type: " + path);
-    if (type == "string" && value.get_ref<const std::string&>().find('\0') != std::string::npos) throw std::runtime_error("Embedded NUL in argument: " + path);
-    if (type == "integer") {
-        if (!value.is_number_unsigned() && value.get<std::int64_t>() < 0) throw std::runtime_error("Negative argument: " + path);
-        auto number = value.get<std::uint64_t>();
-        if (number < rule.value("minimum", std::uint64_t{0}) || number > rule.value("maximum", (std::numeric_limits<std::uint64_t>::max)())) throw std::runtime_error("Argument outside valid range: " + path);
-    }
-    if (rule.contains("enum") && std::find(rule.at("enum").begin(), rule.at("enum").end(), value) == rule.at("enum").end()) throw std::runtime_error("Invalid argument value: " + path);
-    if (type == "array") for (const auto& item : value) validate_value(item, rule.at("items"), path + "[]");
-    if (type == "object") {
-        for (const auto& required : rule.at("required")) if (!value.contains(required.get<std::string>())) throw std::runtime_error("Missing argument: " + path + "." + required.get<std::string>());
-        for (const auto& [key, item] : value.items()) {
-            if (!rule.at("properties").contains(key)) throw std::runtime_error("Unknown argument: " + path + "." + key);
-            validate_value(item, rule.at("properties").at(key), path + "." + key);
-        }
-    }
-}
-static void validate(const std::string& name, const harness::json_t& arguments) {
+void harness::windows::validate_tool(const std::string& name, const harness::json_t& arguments) {
     for (const auto& definition : harness::windows::tool_definitions()) if (definition.at("name") == name) {
-        validate_value(arguments, definition.at("parameters"), "arguments");
+        harness::validate_arguments(arguments, definition.at("parameters"));
         if (arguments.contains("creation_time") && !arguments.contains("pid")) throw std::runtime_error("creation_time requires pid");
         if (arguments.contains("token_creation_time") && !arguments.contains("token_pid")) throw std::runtime_error("token_creation_time requires token_pid");
         if (arguments.contains("target")) {
@@ -196,7 +175,7 @@ static harness::json_t run_process(const std::filesystem::path& executable, cons
 harness::json_t harness::windows::execute_tool(const std::string& name, const harness::json_t& arguments,
     const std::filesystem::path& default_directory, const harness::limits_t& limits, const std::atomic_bool& cancelled, const std::filesystem::path& workspace) {
     try {
-        validate(name, arguments);
+        validate_tool(name, arguments);
         if (cancelled.load()) return {{"ok", false}, {"cancelled", true}};
         if (research::is_research_tool(name)) {
             const auto directory = arguments.contains("working_directory") && name != "crash_replay" ? resolve_path(arguments.at("working_directory"), default_directory) : default_directory;
